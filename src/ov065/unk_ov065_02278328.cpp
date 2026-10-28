@@ -24,7 +24,7 @@ s32 Sock_InetAtoN(s32, u32 *);
 s32 Sock_GetSockName(s32, void *);
 s32 CheckRcode(s32, s32);
 void qsort(void *, s32, s32, ArrayCompareFn);
-s32 OS_SPrintf(char *, char *, s32);
+s32 OS_SPrintf(char *, char *, ...);  // (variadic, as defined)
 u64 func_02132ef8(u64, u64);
 
 s32 inet_addr(s32);

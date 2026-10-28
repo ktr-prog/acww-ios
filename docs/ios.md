@@ -110,5 +110,14 @@ python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa --sign-ad
   priorities for that. Mach-O doesn't (its initialisers run in the link's object order), so configure_host.py links
   `early.o` first on macOS and iOS. `tools/ios_check.py` checks the result in the program: `__mod_init_func` (plain
   or chained fixups) or `__init_offsets`.
+- `tools/apple_abi_cc.py`: every game and runtime unit is compiled through it on Apple targets (iOS and macOS).
+  Apple's arm64 ABI has the caller extend char/short arguments and the callee extend char/short return values, and
+  each side relies on the other. The decompiled game has many calls whose declaration doesn't match the definition
+  (an int passed to a u8 or s16 parameter, function pointer casts, the generated shared-call dispatchers). Elsewhere
+  the value is cut to its type where it's received, as on the DS; on Apple it would arrive uncut and break paths,
+  angles, collision and sound. The tool compiles the unit to LLVM IR, removes those promises (zeroext/signext on a
+  function's own parameters and on returned values at calls), then optimises and compiles it as usual. Calls whose
+  variadic-ness differs from the definition (Apple passes variadic arguments on the stack) are fixed in the sources
+  instead: `FX_Sqrt` in the collision code, `OS_SPrintf`, the Wi-Fi callbacks.
 - `tools/ios_package.py`: the app bundle (Info.plist with the Files-app sharing keys and a launch screen, so the app
   isn't letterboxed; icons drawn by the script) and the `.ipa`.

@@ -411,14 +411,19 @@ def main():
         cc_flags = f"{GAME_FLAGS} {C_FLAGS}"
         if args.strict_c:
             cc_flags = cc_flags.replace(" -w ", " ") + " -Werror=pointer-to-int-cast -Werror=int-to-pointer-cast"
-        n.rule("cc", f"{CC} {cc_flags} $flags -MMD -MF $out.d -c $in -o $out",
+        # Apple arm64 (macOS, iOS): the game's units compiled through tools/apple_abi_cc.py, which keeps them from
+        # relying on other units to extend char/short arguments and return values (Apple's ABI promise; the game's
+        # mismatched declarations and function pointer casts break it - see the tool)
+        abi = "python3 tools/apple_abi_cc.py " if MAC and A64 else ""
+        n.rule("cc", f"{abi}{CC} {cc_flags} $flags -MMD -MF $out.d -c $in -o $out",
                depfile="$out.d", deps="gcc", description="CC $in")
-        n.rule("cxx", f"{CC} -x c++ {GAME_FLAGS} {CXX_FLAGS} $flags -MMD -MF $out.d -c $in -o $out",
+        n.rule("cxx", f"{abi}{CC} -x c++ {GAME_FLAGS} {CXX_FLAGS} $flags -MMD -MF $out.d -c $in -o $out",
                depfile="$out.d", deps="gcc", description="CXX $in")
-        n.rule("hostcc", f"{CC} {HOST_FLAGS} $flags -MMD -MF $out.d -c $in -o $out", depfile="$out.d", deps="gcc",
+        # (the runtime's units too: the game calls into them, some through function pointers)
+        n.rule("hostcc", f"{abi}{CC} {HOST_FLAGS} $flags -MMD -MF $out.d -c $in -o $out", depfile="$out.d", deps="gcc",
                description="HOSTCC $in")
         n.rule("hostas_S", " ".join(x for x in (CC, M_FLAG, PIE) if x) + " -c $in -o $out", description="AS $in")
-        n.rule("hostcxx", f"{CXX} {HOST_CXX_FLAGS} -MMD -MF $out.d -c $in -o $out", depfile="$out.d", deps="gcc",
+        n.rule("hostcxx", f"{abi}{CXX} {HOST_CXX_FLAGS} -MMD -MF $out.d -c $in -o $out", depfile="$out.d", deps="gcc",
                description="HOSTCXX $in")
         if IOS:  # (the iOS glue: Objective-C, with ARC)
             n.rule("hostobjc", f"{CC} {HOST_FLAGS} -fobjc-arc $flags -MMD -MF $out.d -c $in -o $out", depfile="$out.d",

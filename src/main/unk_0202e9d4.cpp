@@ -15,7 +15,7 @@
 extern "C" {
 s32 FX_Div(s32 a, s32 b);
 s32 func_01ffcb0c(s32 a, s32 b);
-s32 FX_Sqrt(...);
+s32 FX_Sqrt(s32 a);  // (fixed, as defined: a variadic call passes the argument elsewhere on Apple arm64)
 s32 VEC_DotProduct(void *a, void *b);
 void VEC_Add(void *o, void *a, void *b);
 void Vec_RotateY(void *v, s16 a);

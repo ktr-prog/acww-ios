@@ -30,7 +30,7 @@ extern void DWCi_AUTH_GetNewWiFiInfo(void *);
 extern void *DWCi_BACKUPlConvWifiInfo(void *);
 extern u32 DWCi_BACKUPlConvMaskCidr(void *);
 extern void DWCi_BACKUPlConvMaskAddr(u32, void *);
-extern void OS_SPrintf(void *, const char *, u32, u32, u32, u32);
+extern void OS_SPrintf(void *, const char *, ...);  // (variadic, as defined)
 
 u32 WfcUtil_HexDigitValue(u32 c);
 void WfcUtil_ParseIpDigits(u8 *s, u8 *out);

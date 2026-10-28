@@ -12,7 +12,10 @@
 
 #pragma thumb off
 
-typedef s32 (*WfcMoveWhFunc)(...);
+// (fixed parameters, as the functions they point to have: through a variadic type, Apple arm64 would pass the
+// arguments on the stack while the function reads them from registers)
+typedef s32 (*WfcMoveWhJudgeFunc)(void *);
+typedef s32 (*WfcMoveWhWepKeyFunc)(void *, void *);
 
 struct WfcMoveWhWork {
     s32 userGameInfo;
@@ -34,7 +37,7 @@ struct WfcMoveWhWork {
     s32 sysState;
     s32 connectMode;
     s32 receiverFunc;
-    WfcMoveWhFunc judgeAcceptFunc;
+    WfcMoveWhJudgeFunc judgeAcceptFunc;
     u16 myAid;
     u16 connectBitmap;
     s32 errCode;
@@ -49,7 +52,7 @@ struct WfcMoveWhWork {
     s32 recvBufferSize;
     u8 pad_12a8[0x13a8 - 0x12a8];
     u32 unk_13a8;
-    WfcMoveWhFunc parentWepKeyGenerator;
+    WfcMoveWhWepKeyFunc parentWepKeyGenerator;
     u32 unk_13b0;
     u8 pad_13b4[0xc];
     u8 wepKey[0x20];
@@ -648,7 +651,7 @@ extern "C" s32 WfcMoveWh_ParentConnect(s32 a, u32 b, u32 c) {
 }
 
 extern "C" void WfcMoveWh_SetJudgeCallback(void *a) {
-    sWfcMoveWh->judgeAcceptFunc = (WfcMoveWhFunc)a;
+    sWfcMoveWh->judgeAcceptFunc = (WfcMoveWhJudgeFunc)a;
 }
 
 extern "C" void *WfcMoveWh_GetSharedData(s32 a) {
