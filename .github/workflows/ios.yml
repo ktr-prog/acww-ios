@@ -1,0 +1,85 @@
+# The iOS app: an unsigned .ipa for sideloading (docs/ios.md). Runs on every push, on pull requests and by hand
+# (Actions > iOS > Run workflow). The .ipa is in the run's artifacts as ACWW-iOS (a zip holding ACWW.ipa).
+# No game data is used or needed here: the player adds their own copy of the game on the device.
+name: iOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ios:
+    name: iOS app (unsigned .ipa)
+    runs-on: macos-latest
+    env:
+      SDL_TAG: release-2.32.10
+      IOS_MIN: "14.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tools
+        id: tools
+        run: |
+          brew install ninja
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          cmake --version
+          echo "xcode=$(xcodebuild -version | head -n 1 | tr -c 'A-Za-z0-9.' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Check the touch controls
+        run: |
+          mkdir -p build
+          cc -O1 -Wall -Imodern/host/ios modern/host/ios/tests/touch_controls_test.c modern/host/ios/touch_controls.c -o build/touch_controls_test
+          build/touch_controls_test
+
+      - name: Restore SDL2 for iOS
+        id: sdl
+        uses: actions/cache@v4
+        with:
+          path: build/SDL2-ios
+          key: sdl2-ios-${{ env.SDL_TAG }}-${{ env.IOS_MIN }}-${{ steps.tools.outputs.xcode }}-v1
+
+      - name: Build SDL2 for iOS
+        if: steps.sdl.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$SDL_TAG" https://github.com/libsdl-org/SDL.git build/SDL2-src
+          cmake -S build/SDL2-src -B build/SDL2-build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_MIN" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/SDL2-ios"
+          cmake --build build/SDL2-build
+          cmake --install build/SDL2-build
+          test -f build/SDL2-ios/lib/libSDL2.a
+
+      - name: Configure
+        run: python3 tools/configure_host.py --os ios --ios-min "$IOS_MIN" --sdl2 "$GITHUB_WORKSPACE/build/SDL2-ios"
+
+      - name: Build
+        run: ninja -f build_host_ios.ninja
+
+      - name: Check the program
+        run: |
+          file build/hostios_usa/acww
+          python3 tools/ios_check.py build/hostios_usa/acww
+
+      - name: Package
+        run: |
+          python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa \
+            --version "1.0" --build "${{ github.run_number }}" --sign-adhoc
+          unzip -l build/ios/ACWW.ipa
+          codesign --verify --verbose build/ios/Payload/ACWW.app
+          plutil -lint build/ios/Payload/ACWW.app/Info.plist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ACWW-iOS
+          path: build/ios/ACWW.ipa
+          if-no-files-found: error
