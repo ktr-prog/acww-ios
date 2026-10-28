@@ -14,7 +14,11 @@
 #import <UIKit/UIKit.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/sysctl.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "ios.h"
 
@@ -82,12 +86,74 @@ static NSArray<NSString *> *roms_in(NSString *dir) {
     return [roms sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
 }
 
-// the game's path, once the player has put it in the Documents folder; asks until then
-static NSString *find_rom(void) {
+static NSString *documents(void) {
     NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
     if (!docs) docs = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:docs withIntermediateDirectories:YES attributes:nil error:nil];
+    return docs;
+}
+
+// The runtime's messages (stderr, stdout) into acww-log.txt in the app's folder, where the Files app shows it: what
+// went wrong (crash reports with the code address, the game's panics), the sound device, the frame rate and the
+// sound queue every 10 seconds, the touches. The previous run's log is kept as acww-log-previous.txt (a crash ends
+// the run: its report is there after the app is opened again).
+static void open_log(NSString *docs) {
     NSFileManager *fm = [NSFileManager defaultManager];
-    [fm createDirectoryAtPath:docs withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *log = [docs stringByAppendingPathComponent:@"acww-log.txt"];
+    NSString *prev = [docs stringByAppendingPathComponent:@"acww-log-previous.txt"];
+    [fm removeItemAtPath:prev error:nil];
+    [fm moveItemAtPath:log toPath:prev error:nil];
+    if (!freopen(log.fileSystemRepresentation, "w", stderr)) return;
+    setvbuf(stderr, NULL, _IONBF, 0);  // (each message on disk at once: a crash loses nothing)
+    dup2(fileno(stderr), STDOUT_FILENO);
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    char model[64] = "?";
+    size_t n = sizeof model - 1;
+    sysctlbyname("hw.machine", model, &n, NULL, 0);
+    time_t now = time(NULL);
+    char when[64];
+    strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", localtime(&now));
+    NSDictionary *info = [NSBundle mainBundle].infoDictionary;
+    fprintf(stderr, "ios: ACWW %s (build %s), %s, iOS %s, %s\n",
+            [info[@"CFBundleShortVersionString"] UTF8String] ?: "?", [info[@"CFBundleVersion"] UTF8String] ?: "?",
+            model, [UIDevice currentDevice].systemVersion.UTF8String, when);
+}
+
+// acww-options.txt in the app's folder: the runtime's options (docs/host.md, README.md), a NAME=value per line,
+// as environment variables are elsewhere; # starts a comment. Written with the useful ones commented out.
+static void read_options(NSString *docs) {
+    NSString *path = [docs stringByAppendingPathComponent:@"acww-options.txt"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:path]) {
+        NSString *text =
+            @"# ACWW options: one NAME=value per line. Remove the # in front of a line to use it, then close the app\n"
+            @"# (swipe it away) and open it again.\n"
+            @"#\n"
+            @"# A larger sound buffer, if the sound crackles (default 512):\n"
+            @"#ACWW_AUDIO_SAMPLES=2048\n"
+            @"# No statistics lines in acww-log.txt:\n"
+            @"#ACWW_STATS=0\n"
+            @"# No touch lines in acww-log.txt:\n"
+            @"#ACWW_TOUCH_LOG=0\n";
+        [text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        return;
+    }
+    NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    for (NSString *raw in [text componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+        NSString *line = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if (line.length == 0 || [line hasPrefix:@"#"]) continue;
+        NSRange eq = [line rangeOfString:@"="];
+        if (eq.location == NSNotFound || eq.location == 0) continue;
+        NSString *name = [[line substringToIndex:eq.location] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        NSString *value = [[line substringFromIndex:eq.location + 1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        setenv(name.UTF8String, value.UTF8String, 1);
+        fprintf(stderr, "ios: option %s=%s\n", name.UTF8String, value.UTF8String);
+    }
+}
+
+// the game's path, once the player has put it in the Documents folder; asks until then
+static NSString *find_rom(NSString *docs) {
+    NSFileManager *fm = [NSFileManager defaultManager];
     // (a file in the folder, so that the Files app lists it from the start)
     NSString *readme = [docs stringByAppendingPathComponent:kReadmeName];
     if (![fm fileExistsAtPath:readme]) {
@@ -108,6 +174,7 @@ static NSString *find_rom(void) {
         }
         for (NSString *r in roms) {
             NSString *sha = sha1_of(r);
+            fprintf(stderr, "ios: %s: SHA-1 %s\n", r.lastPathComponent.UTF8String, sha ? sha.UTF8String : "(unreadable)");
             if (sha && [sha isEqualToString:kRomSha1]) return r;
         }
         // none is the supported dump: say so, and let the player try the first one anyway
@@ -123,7 +190,10 @@ static int ios_main(int argc, char *argv[]) {
     (void)argc;
     NSString *rom;
     @autoreleasepool {
-        rom = find_rom();
+        NSString *docs = documents();
+        open_log(docs);
+        read_options(docs);
+        rom = find_rom(docs);
     }
     static char path[4096];
     snprintf(path, sizeof path, "%s", rom.fileSystemRepresentation);

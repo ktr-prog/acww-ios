@@ -62,6 +62,18 @@ D-pad, and the triggers as L and R. Back + Start opens the button binding screen
 
 The game pauses while the app is in the background and continues when you come back.
 
+## If something goes wrong: the log
+
+The app writes **`acww-log.txt`** into its folder (Files app > On My iPhone > ACWW): the sound device, the screen
+layout, every touch on the bottom screen, the frame rate and the sound queue every 10 seconds, and, if the app
+crashes, where (with the function names and every game thread's stack). The previous run's log is kept as
+`acww-log-previous.txt`, so after a crash, open the app again and that file has the report. Send these files when
+you report a problem.
+
+**`acww-options.txt`** in the same folder sets the runtime's options (the environment variables of the PC version):
+one `NAME=value` per line. It is created with a few useful ones commented out (`#`). Close the app fully (swipe it
+away) and open it again after changing it.
+
 ## What's different from the PC version
 
 - **The picture** is drawn by the CPU renderers at the DS's resolution, then scaled up sharply. There is no

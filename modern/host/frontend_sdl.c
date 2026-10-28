@@ -139,7 +139,11 @@ static void open_audio(void) {
     want.userdata = sShm;
     sDev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);  // SDL converts to the device's rate and format
     if (!sDev) { fprintf(stderr, "frontend: no sound: %s\n", SDL_GetError()); return; }
+#if HOST_IOS
+    if (1)  // (always: into the log, acww-log.txt)
+#else
     if (getenv("ACWW_AUDIO_INFO"))
+#endif
         fprintf(stderr, "frontend: sound %d Hz, format %04x, %d channels, %d frames (%s)\n", have.freq, have.format,
                 have.channels, have.samples, SDL_GetCurrentAudioDriver());
     SDL_PauseAudioDevice(sDev, 0);
@@ -363,13 +367,21 @@ static void finger_to_logical(float fx, float fy, int *x, int *y) {
 }
 static void update_touch(void) {
 #if HOST_IOS
-    int tx, ty;
+    int tx, ty, was = sShm->touch_down != 0;
     if (tc_stylus(&sTouch, &tx, &ty)) {
         sShm->touch_x = tx;
         sShm->touch_y = ty;
         sShm->touch_down = 1;
     } else {
         sShm->touch_down = 0;
+    }
+    // (the log, acww-log.txt: the stylus going down and up, the first 200 times; ACWW_TOUCH_LOG=0: never)
+    static int logged, logOn = -1;
+    if (logOn < 0) logOn = !getenv("ACWW_TOUCH_LOG") || atoi(getenv("ACWW_TOUCH_LOG")) != 0;
+    if (logOn && was != (sShm->touch_down != 0) && logged < 200) {
+        logged++;
+        if (sShm->touch_down) fprintf(stderr, "touch: down at %d,%d (frame %llu)\n", tx, ty, (unsigned long long)host_frame());
+        else fprintf(stderr, "touch: up (frame %llu)\n", (unsigned long long)host_frame());
     }
     return;
 #endif
@@ -573,8 +585,35 @@ static void ios_layout(void) {
     float in[4];
     ios_safe_area(sWin, in);
     for (int i = 0; i < 4; i++) in[i] *= sPt;
-    if (ow != sLayout.w || oh != sLayout.h || sShowControls != sLayout.controls) tc_reset(&sTouch);
+    int changed = ow != sLayout.w || oh != sLayout.h || sShowControls != sLayout.controls;
+    if (changed) tc_reset(&sTouch);
     tc_layout(&sLayout, ow, oh, sPt, in, sShowControls);
+    if (changed)
+        fprintf(stderr, "frontend: window %dx%d px (%.0fx scale), safe area %.0f,%.0f,%.0f,%.0f px, screens %.0f,%.0f %.0fx%.0f, "
+                "buttons %s\n", ow, oh, sPt, in[0], in[1], in[2], in[3], sLayout.screens.x, sLayout.screens.y,
+                sLayout.screens.w, sLayout.screens.h, sLayout.controls ? "on" : "off");
+}
+
+// every 10 s of play, into the log (acww-log.txt; ACWW_STATS=0: not): the frame rate (the DS's is 59.83), the sound
+// queue's dry runs and skips (the sound card's buffer emptied: a crackle; too far behind: a jump) and its mean fill
+static void ios_stats(void) {
+    static int on = -1;
+    static uint64_t t0;
+    static unsigned frames, dry0, skips0, calls0;
+    static double level0;
+    if (on < 0) on = !getenv("ACWW_STATS") || atoi(getenv("ACWW_STATS")) != 0;
+    if (!on) return;
+    uint64_t now = host_plat_time_ns();
+    if (!t0) { t0 = now; dry0 = sDry, skips0 = sSkips, calls0 = sCalls, level0 = sLevelSum; return; }
+    if (++frames < 600) return;
+    double secs = (double)(now - t0) / 1e9;
+    unsigned calls = sCalls - calls0;
+    int pads = 0;
+    for (int p = 0; p < 4; p++) pads += sPads[p] != 0;
+    fprintf(stderr, "stats: frame %llu: %.1f frames/s, sound %u dry, %u skips, queue %.0f frames; %s, %d controller(s)\n",
+            (unsigned long long)host_frame(), frames / secs, sDry - dry0, sSkips - skips0,
+            calls ? (sLevelSum - level0) / calls : 0.0, sLayout.controls ? "buttons" : "no buttons", pads);
+    t0 = now, frames = 0, dry0 = sDry, skips0 = sSkips, calls0 = sCalls, level0 = sLevelSum;
 }
 
 // the controls, each from a texture made once per size and look (touch_controls.c draws them)
@@ -729,6 +768,7 @@ static void frame_body(void) {
 #if HOST_IOS
     if (sInBackground) return;  // (went to the background just now: nothing drawn; the next frame waits)
     ios_layout();               // (the buttons shown or hidden by this frame's events)
+    ios_stats();
     sShm->keys = keyboard_keys() | pad_keys() | tc_keys(&sTouch);
 #else
     sShm->keys = keyboard_keys() | pad_keys();

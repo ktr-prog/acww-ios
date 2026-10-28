@@ -16,6 +16,7 @@
 #if HOST_DEBUG_POSIX
 
 #if defined(__APPLE__)
+#include <dlfcn.h>
 #include <mach-o/dyld.h>
 #else
 #include <link.h>
@@ -89,6 +90,12 @@ static void find_load_bias(void) { dl_iterate_phdr(first_object, &sLoadBias); }
 static void print_code_address(const char *what, uintptr_t a) {
     if (sLoadBias && a >= sLoadBias) fprintf(stderr, "%s%08lx (%lx)", what, (unsigned long)a, (unsigned long)(a - sLoadBias));
     else fprintf(stderr, "%s%08lx", what, (unsigned long)a);
+#if defined(__APPLE__)
+    // (the nearest symbol the program exports: its functions, on Apple, where there is no addr2line on the device)
+    Dl_info info;
+    if (dladdr((const void *)a, &info) && info.dli_sname)
+        fprintf(stderr, " %s+%#lx", info.dli_sname, (unsigned long)(a - (uintptr_t)info.dli_saddr));
+#endif
 }
 
 // frame-pointer walk, staying within 1 MB above the stack pointer (host stacks are 512 KB, the main one is the
@@ -221,6 +228,10 @@ static void on_fatal_signal(int sig, siginfo_t *si, void *ctx) {
     if (sig == SIGFPE)
         fprintf(stderr, "host: (an integer division the DS wouldn't trap on: it wants DS_DIV / DS_MOD, include/ds_div.h)\n");
     context_report(ctx);
+    // (every game thread's stack too: the one that crashed may have been called from another's request)
+    extern void host_dump_threads(void (*)(uintptr_t *, uintptr_t));
+    host_dump_threads(host_backtrace);
+    fflush(stderr);
     extern void frontend_shutdown(void);
     frontend_shutdown();
     _exit(5);
@@ -229,9 +240,19 @@ static void on_fatal_signal(int sig, siginfo_t *si, void *ctx) {
 // the crash handlers; again after melon_init: melonDS's JIT installs a SIGSEGV handler of its own (for its fast
 // memory, unused here) that doesn't hand other faults on to this one
 void host_debug_crash_handlers(void) {
+    // (on a stack of their own: a stack overflow's fault can't run on the stack that overflowed)
+    static int altstack;
+    if (!altstack) {
+        enum { ALT = 256 * 1024 };
+        stack_t ss;
+        memset(&ss, 0, sizeof ss);
+        ss.ss_sp = mmap(0, ALT, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        ss.ss_size = ALT;
+        if (ss.ss_sp != MAP_FAILED && sigaltstack(&ss, 0) == 0) altstack = 1;
+    }
     struct sigaction sa;
     memset(&sa, 0, sizeof sa);
-    sa.sa_flags = SA_SIGINFO | SA_NODEFER;
+    sa.sa_flags = SA_SIGINFO | SA_NODEFER | (altstack ? SA_ONSTACK : 0);
     sa.sa_sigaction = on_fatal_signal;
     sigaction(SIGSEGV, &sa, 0);
     sigaction(SIGBUS, &sa, 0);
