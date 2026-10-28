@@ -11,7 +11,9 @@ on:
 jobs:
   ios:
     name: iOS app (unsigned .ipa)
-    runs-on: macos-latest
+    # (an Intel Mac: GitHub's Apple-silicon Macs are often short of capacity, and the jobs then never start; Xcode
+    # builds for the iPhone from either)
+    runs-on: macos-15-intel
     env:
       SDL_TAG: release-2.32.10
       IOS_MIN: "14.0"
