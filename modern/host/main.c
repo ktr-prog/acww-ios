@@ -16,8 +16,19 @@
 int gHostVerbose;
 const char *gHostRomPath;
 
+#if HOST_IOS
+void ios_fatal_message(const char *text);  // modern/host/ios/ios_glue.m
+#endif
+
 void host_fatal(const char *msg) {
     fprintf(stderr, "host: fatal: %s (frame %llu)\n", msg, (unsigned long long)host_frame());
+#if HOST_IOS
+    {  // (no terminal to read it on: shown before the app ends)
+        char text[512];
+        snprintf(text, sizeof text, "The game stopped: %s.", msg);
+        ios_fatal_message(text);
+    }
+#endif
     extern void frontend_shutdown(void);
     frontend_shutdown();
     exit(2);
@@ -70,16 +81,7 @@ const u8 *host_rom(u32 *size);
 void NitroMain(void);
 void NitroStartUp(void);
 
-// before the game's static constructors (which may touch DS memory): map it first
-void host_vram_init(void);
-#include "guards.h"
-__attribute__((constructor(101))) static void early_init(void) {
-    HostMem_Init();
-    host_map_memory();
-    host_vram_init();
-    host_guards_init();   // (the guard variant: configure_host.py --guards)
-    host_highmem_init();  // ACWW_HIGHMEM: the low 4 GB reserved from here on
-}
+// (the DS memory is mapped before the game's static constructors run: early.c)
 
 static void game_main(void *arg) {
     (void)arg;
@@ -89,6 +91,13 @@ static void game_main(void *arg) {
 }
 
 char **gHostArgv;  // (host_reset_system: the program starts again with them)
+// the process's own stack while the game runs on its stacks (iOS: the frontend runs on it, frontend_sdl.c)
+void *gHostMainSp;
+#if HOST_IOS
+// (iOS: the app's main() is UIKit's, modern/host/ios/ios_glue.m, which calls this with the game's path)
+#define main host_main
+void frontend_backend_main_loop(void);
+#endif
 int main(int argc, char **argv) {
     gHostArgv = argv;
     for (int i = 1; i < argc; i++) {
@@ -115,11 +124,15 @@ int main(int argc, char **argv) {
     frontend_init(argv[0]);
     atexit(frontend_shutdown);
     // the game's main thread on a stack of its own (os.c: below 4 GB on 64-bit Linux)
-    static void *host_sp;
     enum { MAIN_STACK = 1024 * 1024 };
     void *stack = host_stack_alloc(MAIN_STACK);
     if (!stack) host_fatal("no memory for the main thread's stack");
-    host_coro_switch(&host_sp, host_coro_prepare(stack, MAIN_STACK, game_main, 0));
+    host_coro_switch(&gHostMainSp, host_coro_prepare(stack, MAIN_STACK, game_main, 0));
+#if HOST_IOS
+    // iOS: the game switches back here at each frame (frontend_backend_frame): UIKit, SDL and the Metal renderer run
+    // on the thread's own stack, the one the system set up for them
+    frontend_backend_main_loop();
+#endif
     host_fatal("the game's main thread returned");
 }
 

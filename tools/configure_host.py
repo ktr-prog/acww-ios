@@ -55,12 +55,19 @@ parser.add_argument("--cross", default=os.path.expanduser(
 parser.add_argument("--qemu", default=os.path.expanduser("~/acww/toolchains/qemu/usr/bin/qemu-aarch64"),
                     help="--arch aarch64: qemu-aarch64 (user mode) for running the tests (the game: ACWW_RUNNER, "
                          "tools/host_oracle.sh)")
-parser.add_argument("--os", choices=["linux", "windows", "macos"], default="macos" if sys.platform == "darwin" else "linux",
+parser.add_argument("--os", choices=["linux", "windows", "macos", "ios"], default="macos" if sys.platform == "darwin" else "linux",
                     help="windows (with --arch x86_64): a cross build for x86-64 Windows with llvm-mingw (clang, UCRT, "
                          "libc++, lld; --mingw): build_host_win64.ninja, build/hostwin64_<v>/acww.exe, headless only "
                          "(no frontend yet), run with Wine here (ACWW_RUNNER; docs/host.md); macos (the default on a "
                          "Mac): a native build for the Mac's own architecture with Apple's clang, SDL2 from pkg-config "
-                         "(Homebrew): build_host64.ninja, build/host64_<v>")
+                         "(Homebrew): build_host64.ninja, build/host64_<v>; ios: arm64 iPhone/iPad, cross-compiled "
+                         "with Apple's clang (--ios-sdk) against a static SDL2 built for iOS (--sdl2: its install "
+                         "prefix): build_host_ios.ninja, build/hostios_<v>/acww, packaged by tools/ios_package.py "
+                         "(docs/ios.md)")
+parser.add_argument("--ios-sdk", default="",
+                    help="--os ios: the iPhoneOS SDK (default: `xcrun --sdk iphoneos --show-sdk-path`)")
+parser.add_argument("--ios-min", default="14.0", help="--os ios: the oldest iOS version the app runs on")
+parser.add_argument("--extra-ldflags", default="", help="more flags for the link (e.g. -fuse-ld=lld)")
 parser.add_argument("--mingw", default="",
                     help="the llvm-mingw directory for --os windows (default: the newest ~/acww/toolchains/llvm-mingw-*)")
 parser.add_argument("--extra-cflags", default="",
@@ -89,8 +96,32 @@ args = parser.parse_args()
 
 root = Path(__file__).resolve().parent.parent
 WIN = args.os == "windows"
+IOS = args.os == "ios"
 MAC = args.os == "macos"
-if MAC:
+IOS_TARGET = ""
+if IOS:
+    # (the same build as macOS's in every other respect: Apple's clang and linker, Mach-O, arm64; MAC below is set
+    # for that - IOS marks what differs: the target, the SDK, a static SDL2, the iOS frontend parts)
+    if args.guards or args.oracle or args.sanitize:
+        sys.exit("--os ios: no --guards, --oracle or --sanitize")
+    if not args.ios_sdk:
+        try:
+            args.ios_sdk = subprocess.run(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], capture_output=True,
+                                          text=True, check=True).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            sys.exit("--os ios: no iPhoneOS SDK (install Xcode, or give --ios-sdk)")
+    if not os.path.isdir(args.ios_sdk):
+        sys.exit(f"--ios-sdk: no directory {args.ios_sdk}")
+    if not args.sdl2 or not os.path.exists(f"{args.sdl2}/lib/libSDL2.a"):
+        sys.exit("--os ios: --sdl2 <prefix> with SDL2 built for iOS (lib/libSDL2.a, include/SDL2)")
+    if args.cc == "gcc":
+        args.cc = "xcrun -sdk iphoneos clang" if sys.platform == "darwin" else "clang"
+    IOS_TARGET = f"-target arm64-apple-ios{args.ios_min} -isysroot {shlex.quote(args.ios_sdk)}"
+    IOS_CXX = args.cc[:-len("clang")] + "clang++" if args.cc.endswith("clang") else args.cc + "++"
+    args.cc = f"{args.cc} {IOS_TARGET}"
+    args.arch = "aarch64"
+    MAC = True
+if MAC and not IOS:
     if args.guards or args.oracle:
         sys.exit("--os macos: no --guards or --oracle (GNU ld / melonDS builds)")
     # (Apple's gcc is clang; the build is native, for the machine's own architecture: arm64 or x86-64)
@@ -109,7 +140,7 @@ if WIN:
             sys.exit("configure_host.py: no llvm-mingw in ~/acww/toolchains (--mingw)")
         args.mingw = str(Path(found[-1]).parent.parent)
     args.cc = f"{args.mingw}/bin/x86_64-w64-mingw32-clang"
-CLANG = os.path.basename(args.cc).startswith("clang") or WIN
+CLANG = os.path.basename(args.cc).startswith("clang") or WIN or IOS
 if CLANG and not WIN and not MAC:
     if not args.suffix:
         args.suffix = "_clang"
@@ -139,7 +170,11 @@ if SANITIZE:
 X64 = args.arch == "x86_64"
 HOST64 = X64 or A64  # a 64-bit build (the build directory's and the ninja file's names apart)
 CXX = "g++"
-if MAC:
+if IOS:
+    CXX = f"{IOS_CXX} {IOS_TARGET}"
+    build = Path("build") / f"hostios{args.suffix}_{args.version}"
+    NINJA_FILE = f"build_host_ios{args.suffix}.ninja"
+elif MAC:
     CXX = "clang++"
     build = Path("build") / f"host64{args.suffix}_{args.version}"
     NINJA_FILE = f"build_host64{args.suffix}.ninja"
@@ -249,13 +284,23 @@ def find_sdl2():
         if os.path.exists(f"{d}/SDL.h"):
             return [d]
     return tree(os.path.expanduser("~/acww/toolchains/sdl2-dev"))
-SDL2_DIRS = find_sdl2() if (X64 or MAC) and not WIN else None
+if IOS:  # (an install prefix of SDL2 built for iOS: include/SDL2, lib/libSDL2.a)
+    SDL2_DIRS = [f"{args.sdl2}/include/SDL2"]
+else:
+    SDL2_DIRS = find_sdl2() if (X64 or MAC) and not WIN else None
 SDL2 = bool(SDL2_DIRS)
 FRONTEND_FLAG = " -DHOST_FRONTEND_SDL=1" if SDL2 else " -DHOST_FRONTEND_NONE=1" if HOST64 else ""
 # (SDL_syswm.h, for the window's native handles: modern/host/x11shim stands in for the X11 headers)
-SDL_CFLAGS = " ".join(f"-I{d}" for d in SDL2_DIRS) + " -Imodern/host/x11shim" if SDL2 else ""
+SDL_CFLAGS = " ".join(f"-I{shlex.quote(d)}" for d in SDL2_DIRS) + " -Imodern/host/x11shim" if SDL2 else ""
 SDL_LIBS = "-l:libSDL2-2.0.so.0" if SDL2 else ""
-if MAC and SDL2:
+if IOS:
+    # SDL2 linked statically, with the system frameworks it uses (its sdl2.pc for iOS); the app's own main()
+    # (modern/host/ios/ios_glue.m) starts UIKit through SDL_UIKitRunApp, so no SDL2main
+    SDL_LIBS = (f"{shlex.quote(args.sdl2 + '/lib/libSDL2.a')} -framework CoreVideo -framework CoreAudio "
+                "-framework AudioToolbox -framework AVFoundation -framework CoreBluetooth -framework CoreGraphics "
+                "-framework CoreMotion -framework Foundation -weak_framework GameController -framework Metal "
+                "-framework OpenGLES -framework QuartzCore -framework UIKit -weak_framework CoreHaptics -lobjc")
+elif MAC and SDL2:
     SDL_LIBS = subprocess.run(["pkg-config", "--libs", "sdl2"], capture_output=True, text=True).stdout.strip() or "-lSDL2"
 if MAC:
     # Apple's clang and ld64: a PIE (always, on macOS); a native build, no -m64. The default 8 MB stack is the main
@@ -263,6 +308,8 @@ if MAC:
     HOST_FLAGS = ("-O1 -g -fno-omit-frame-pointer -ffp-contract=off -Wall -std=gnu11 -DHOST -Iinclude" + FRONTEND_FLAG
                   + SAN_FLAGS)
     LINK_FLAGS = SAN_FLAGS.replace(" -DHOST_ASAN", "")
+    if IOS:
+        HOST_FLAGS += " -DHOST_IOS=1"
     HOST_CXX_FLAGS = "-O1 -g -ffp-contract=off -std=c++17 -DHOST" + SAN_FLAGS
     MELON_LIBS = ""
 elif A64:
@@ -308,6 +355,12 @@ if not args.oracle:  # (no melonDS: its headers and libraries aren't needed)
 
 # WebGPU (wgpu-native, linked statically): ACWW_RENDERER3D=wgpu
 WGPU = args.wgpu
+if IOS:
+    # (iOS: the CPU renderers, shown by SDL's own renderer - Metal - with the touch controls around the screens:
+    # modern/host/frontend_sdl.c, modern/host/ios/)
+    if WGPU not in (None, "none"):
+        sys.exit("--os ios: no --wgpu (the iOS frontend draws with SDL's renderer)")
+    WGPU = "none"
 if WGPU is None:
     WGPU = "none"
     if (X64 or MAC) and not WIN:  # (the repository's toolchains/, then ~/acww/toolchains)
@@ -367,9 +420,13 @@ def main():
         n.rule("hostas_S", " ".join(x for x in (CC, M_FLAG, PIE) if x) + " -c $in -o $out", description="AS $in")
         n.rule("hostcxx", f"{CXX} {HOST_CXX_FLAGS} -MMD -MF $out.d -c $in -o $out", depfile="$out.d", deps="gcc",
                description="HOSTCXX $in")
+        if IOS:  # (the iOS glue: Objective-C, with ARC)
+            n.rule("hostobjc", f"{CC} {HOST_FLAGS} -fobjc-arc $flags -MMD -MF $out.d -c $in -o $out", depfile="$out.d",
+                   deps="gcc", description="HOSTOBJC $in")
         libs = " -lws2_32" if WIN else f" {SDL_LIBS} -lc++ -lpthread -lm" if MAC else \
             f" {SDL_LIBS} -lstdc++ -lpthread -lm -lc -lgcc"  # (ws2_32: wm7.c's sockets)
-        n.rule("link", f"{CXX} {LINK_FLAGS} -o $out @$objects {MELON_LIBS}{WGPU_LIBS}{libs}", description="LINK $out")
+        extra_ld = f" {args.extra_ldflags}" if args.extra_ldflags else ""
+        n.rule("link", f"{CXX} {LINK_FLAGS}{extra_ld} -o $out @$objects {MELON_LIBS}{WGPU_LIBS}{libs}", description="LINK $out")
         objs = []
         for s in sources(Path("src"), (".c", ".cpp")):
             o = str(build / s.with_suffix(".o"))
@@ -378,16 +435,18 @@ def main():
                 fl.append("-fno-sanitize=address")
             n.build(o, "cxx" if s.suffix == ".cpp" else "cc", str(s), variables={"flags": " ".join(fl)} if fl else None)
             objs.append(o)
-        for s in sources(Path("modern/host"), (".c", ".cpp", ".S")):
+        for s in sources(Path("modern/host"), (".c", ".cpp", ".S", ".m")):
             if "viewer" in s.parts or "tests" in s.parts:
                 continue
+            if ("ios" in s.parts or s.suffix == ".m") and not IOS:
+                continue  # (the iOS frontend's parts: --os ios only)
             if WIN and s.name in ("frontend_sdl.c", "frontend_ui.c", "frontend_viewer.c", "plat_posix.c"):
                 continue  # (debug_posix.c and guards.c are empty there: HOST_DEBUG_POSIX 0, no HOST_GUARDS)
             if s.name in (("melon_none.c",) if args.oracle else ("melon.cpp", "melon_platform.cpp")):
                 continue  # (melonDS, or the stand-in that refuses it: --oracle)
             o = str(build / s.with_suffix(".o"))
-            rule = {".cpp": "hostcxx", ".S": "hostas_S"}.get(s.suffix, "hostcc")
-            sdl = s.name in ("frontend_sdl.c", "frontend_ui.c") and SDL_CFLAGS
+            rule = {".cpp": "hostcxx", ".S": "hostas_S", ".m": "hostobjc"}.get(s.suffix, "hostcc")
+            sdl = (s.name in ("frontend_sdl.c", "frontend_ui.c") or "ios" in s.parts) and SDL_CFLAGS
             implicit = []
             if s.name == "wgpu_display.c":  # (the 2D renderer's shader, embedded: modern/host/gpu2d.wgsl)
                 wgsl_h = str(build / "gen" / "gpu2d_wgsl.h")
@@ -463,6 +522,11 @@ def main():
             link_objs = [str(build / "game_all.o")] + host_objs
         else:
             link_objs = game_objs + host_objs
+        if MAC:
+            # Mach-O runs the initialisers in the order of the objects in the link (no priorities across objects):
+            # modern/host/early.c's, which maps the DS memory, first - before the game's static constructors
+            early = [o for o in link_objs if o.endswith("/modern/host/early.o")]
+            link_objs = early + [o for o in link_objs if o not in early]
         # (the game's C library names don't clash with the host's: include/host_libc_rename.h)
         objects_file = build / "objects.txt"
         objects_file.write_text("".join(f"{Path(o).as_posix()}\n" for o in link_objs))

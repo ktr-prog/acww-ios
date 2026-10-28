@@ -465,6 +465,13 @@ void pxi7_init(void) {
         const char *rom = host_rom_path();
         size_t n = rom ? strlen(rom) : 0;
         if (n > 4 && !strcmp(rom + n - 4, ".nds")) n -= 4;
+#if HOST_IOS
+        // (iOS: .NDS too - files copied from elsewhere keep their name as it was; the other hosts keep the name their
+        // saves already have)
+        else if (n > 4 && rom[n - 4] == '.' && (rom[n - 3] | 32) == 'n' && (rom[n - 2] | 32) == 'd' &&
+                 (rom[n - 1] | 32) == 's')
+            n -= 4;
+#endif
         if (rom && n + 5 < sizeof path) {
             snprintf(path, sizeof path, "%.*s.sav", (int)n, rom);
             sSavePath = path;

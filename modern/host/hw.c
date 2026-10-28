@@ -684,9 +684,17 @@ void host_reset_system(void) {
     frontend_shutdown();
     host_exit_dumps();
     fflush(NULL);
+#if HOST_IOS
+    // (an iOS app can't start itself again: the player opens it again; the save file is written already, pxi7.c)
+    extern void ios_fatal_message(const char *text);
+    ios_fatal_message("The game restarted itself (this happens after a broken wireless connection). Open the app "
+                      "again to go on playing.");
+    exit(0);
+#else
     extern char **gHostArgv;
     host_plat_restart(gHostArgv);
     host_fatal("the program couldn't start again");
+#endif
 }
 
 // the reports written at exit: atexit, ACWW_EXIT_FRAME (_Exit), SIGINT (debug_posix.c)

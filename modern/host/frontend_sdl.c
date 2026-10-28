@@ -40,6 +40,25 @@
 #include "render.h"
 #include "wgpu_display.h"
 
+// iOS (HOST_IOS; docs/ios.md): the window fills the screen and turns with the device; the screens and the on-screen
+// controls (modern/host/ios/touch_controls.c) are laid out in the safe area each frame and drawn by SDL's renderer
+// (Metal); fingers are the stylus and the buttons; the buttons hide while a game controller is connected (a touch
+// beside the screens shows them again); the game pauses while the app is in the background; the frontend runs on
+// the main thread's own stack (frontend_backend_main_loop), not a coroutine
+#if HOST_IOS
+#include "ios/ios.h"
+#include "ios/touch_controls.h"
+static TcLayout sLayout;
+static TcState sTouch;
+static int sShowControls = 1;
+static SDL_Texture *sButtonTex[TC_COUNT][16];  // per control: [pressed] (the D-pad: [the directions held >> 4])
+static int sButtonW[TC_COUNT], sButtonH[TC_COUNT];
+static SDL_Texture *sSharp;  // the screens at a whole multiple of their size, smoothed down from there
+static int sSharpK;
+static volatile int sInBackground;
+static float sPt = 1;  // the window's pixels per point
+#endif
+
 static AcwwShm *sShm;
 static SDL_Window *sWin;
 static SDL_Renderer *sRen;
@@ -128,8 +147,10 @@ static void open_audio(void) {
 
 // ---- the frontend's own stack
 enum { FE_STACK = 8 * 1024 * 1024 };
-static void *sFeSp, *sGameSp;
+static void *sGameSp;
 static void frame_body(void);
+#if !HOST_IOS
+static void *sFeSp;
 static void fe_main(void *arg) {
     (void)arg;
     for (;;) {
@@ -137,6 +158,26 @@ static void fe_main(void *arg) {
         host_coro_switch(&sFeSp, sGameSp);
     }
 }
+#else
+// iOS: the main thread's own stack is the frontend's (main.c switches to the game from it and calls this when the
+// game switches back the first time)
+extern void *gHostMainSp;
+void frontend_backend_main_loop(void) {
+    for (;;) {
+        frame_body();
+        host_coro_switch(&gHostMainSp, sGameSp);
+    }
+}
+
+// the app going to the background and coming back (UIKit's notifications, which SDL passes on while it delivers
+// them: before the app is suspended)
+static int SDLCALL app_events(void *user, SDL_Event *e) {
+    (void)user;
+    if (e->type == SDL_APP_WILLENTERBACKGROUND || e->type == SDL_APP_DIDENTERBACKGROUND) sInBackground = 1;
+    if (e->type == SDL_APP_DIDENTERFOREGROUND) sInBackground = 0;
+    return 1;
+}
+#endif
 
 AcwwShm *frontend_backend_open(const char *argv0) {
     (void)argv0;
@@ -144,18 +185,41 @@ AcwwShm *frontend_backend_open(const char *argv0) {
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
     SDL_SetHint(SDL_HINT_APP_NAME, "Animal Crossing: Wild World");
+#if HOST_IOS
+    // every orientation (the layout follows); the home indicator dimmed and the screen's edges for the game first;
+    // the screen kept on (a controller's buttons don't count as touches); no accelerometer as a joystick (it would
+    // count as a controller); controllers through Apple's GameController framework only (SDL's own HID drivers would
+    // ask for Bluetooth access); fingers and the mouse kept apart (touch_controls.c takes both)
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown");
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
+    SDL_SetHint(SDL_HINT_IDLE_TIMER_DISABLED, "1");
+    SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+#endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "frontend: no window (%s): running headless\n", SDL_GetError());
         return 0;
     }
     sShm = calloc(1, sizeof *sShm);
+#if HOST_IOS
+    void *stack = sShm;  // (no stack of its own: frontend_backend_main_loop)
+    SDL_SetEventFilter(app_events, NULL);
+    tc_reset(&sTouch);
+#else
     void *stack = host_plat_stack_alloc(FE_STACK, 0);
+#endif
     if (!sShm || !stack) { fprintf(stderr, "frontend: no memory\n"); SDL_Quit(); free(sShm); return sShm = 0; }
     sShm->magic = ACWW_SHM_MAGIC;
+#if !HOST_IOS
     sFeSp = host_coro_prepare(stack, FE_STACK, fe_main, 0);
+#endif
     sWin = SDL_CreateWindow("Animal Crossing: Wild World (native)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                             256 * sScale, 384 * sScale, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI
-#if defined(__APPLE__)
+#if HOST_IOS
+                            | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS
+#elif defined(__APPLE__)
                             | (render_on_gpu() ? SDL_WINDOW_METAL : 0)
 #endif
                             );
@@ -185,8 +249,14 @@ AcwwShm *frontend_backend_open(const char *argv0) {
         if (!sRen) sRen = SDL_CreateRenderer(sWin, -1, SDL_RENDERER_SOFTWARE);
     }
     if (sRen) {
+#if HOST_IOS
+        // (no logical size: the layout places the screens and the controls in the window's pixels, ios_show)
+        sTex = SDL_CreateTexture(sRen, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, 256, 384);
+        if (sTex) SDL_SetTextureScaleMode(sTex, SDL_ScaleModeNearest);
+#else
         SDL_RenderSetLogicalSize(sRen, 256, 384);  // letterboxed, the mouse in logical coordinates
         sTex = SDL_CreateTexture(sRen, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, 256, 384);
+#endif
     }
     if (!sTex && !sGpu) {
         fprintf(stderr, "frontend: no window (%s): running headless\n", SDL_GetError());
@@ -202,7 +272,11 @@ AcwwShm *frontend_backend_open(const char *argv0) {
 
 void frontend_backend_frame(AcwwShm *shm) {
     (void)shm;
+#if HOST_IOS
+    host_coro_switch(&sGameSp, gHostMainSp);
+#else
     host_coro_switch(&sGameSp, sFeSp);
+#endif
 }
 
 // (also called from the crash and SIGINT handlers: nothing here that isn't safe there; SDL_Quit runs at exit)
@@ -243,6 +317,9 @@ static void pad_added(int index) {
         sPads[p] = SDL_GameControllerOpen(index);
         if (sPads[p])
             fprintf(stderr, "frontend: controller %s\n", SDL_GameControllerName(sPads[p]));
+#if HOST_IOS
+        if (sPads[p]) sShowControls = 0;  // (a touch beside the screens shows them again)
+#endif
         return;
     }
 }
@@ -254,6 +331,11 @@ static void pad_removed(SDL_JoystickID id) {
             sPads[p] = 0;
         }
     }
+#if HOST_IOS
+    int any = 0;
+    for (int p = 0; p < 4; p++) any |= sPads[p] != 0;
+    if (!any) sShowControls = 1;
+#endif
 }
 
 // the touch panel: the left mouse button or the first finger, in the window's logical coordinates (0..255,
@@ -280,6 +362,17 @@ static void finger_to_logical(float fx, float fy, int *x, int *y) {
     *y = (int)ly;
 }
 static void update_touch(void) {
+#if HOST_IOS
+    int tx, ty;
+    if (tc_stylus(&sTouch, &tx, &ty)) {
+        sShm->touch_x = tx;
+        sShm->touch_y = ty;
+        sShm->touch_down = 1;
+    } else {
+        sShm->touch_down = 0;
+    }
+    return;
+#endif
     int held = sFinger.held || sMouse.held;
     int x = sFinger.held ? sFinger.x : sMouse.x, y = sFinger.held ? sFinger.y : sMouse.y;
     if (held && y >= 192 && y < 384 && x >= 0 && x < 256) {
@@ -298,8 +391,38 @@ static void handle(const SDL_Event *e) {
     if (e->type == SDL_CONTROLLERDEVICEREMOVED) { pad_removed(e->cdevice.which); return; }
     if (ui_event(e)) {
         sMouse.held = sFinger.held = 0;
+#if HOST_IOS
+        tc_reset(&sTouch);
+#endif
         return;
     }
+#if HOST_IOS
+    // fingers (normalised to the window) and the mouse (an iPad's pointer: in points) to the touch controls, in the
+    // window's pixels; a touch beside the screens while the buttons are hidden shows them
+    switch (e->type) {
+    case SDL_FINGERDOWN:
+    case SDL_FINGERMOTION:
+    case SDL_FINGERUP: {
+        int ev = e->type == SDL_FINGERDOWN ? TC_DOWN : e->type == SDL_FINGERUP ? TC_UP : TC_MOVE;
+        if (tc_pointer(&sTouch, &sLayout, (int64_t)e->tfinger.fingerId, ev, e->tfinger.x * (float)sLayout.w,
+                       e->tfinger.y * (float)sLayout.h))
+            sShowControls = 1;
+        return;
+    }
+    case SDL_MOUSEBUTTONDOWN:
+    case SDL_MOUSEBUTTONUP:
+        if (e->button.which == SDL_TOUCH_MOUSEID || e->button.button != SDL_BUTTON_LEFT) return;
+        if (tc_pointer(&sTouch, &sLayout, -1000, e->type == SDL_MOUSEBUTTONDOWN ? TC_DOWN : TC_UP,
+                       (float)e->button.x * sPt, (float)e->button.y * sPt))
+            sShowControls = 1;
+        return;
+    case SDL_MOUSEMOTION:
+        if (e->motion.which == SDL_TOUCH_MOUSEID) return;
+        tc_pointer(&sTouch, &sLayout, -1000, TC_MOVE, (float)e->motion.x * sPt, (float)e->motion.y * sPt);
+        return;
+    default: break;
+    }
+#endif
     switch (e->type) {
     case SDL_KEYDOWN:
         if (e->key.repeat) break;
@@ -371,7 +494,9 @@ static void shot(const char *path) {
     SDL_RenderSetViewport(sRen, 0);
     if (px && SDL_RenderReadPixels(sRen, 0, SDL_PIXELFORMAT_XRGB8888, px, w * 4) == 0) write_ppm(path, px, w, h);
     else fprintf(stderr, "frontend: ACWW_WINSHOT: %s\n", SDL_GetError());
+#if !HOST_IOS
     SDL_RenderSetLogicalSize(sRen, 256, 384);
+#endif
     free(px);
 }
 static void window_shot(void) {
@@ -437,10 +562,119 @@ static void script_step(void) {
     }
 }
 
+#if HOST_IOS
+// the layout for the window as it is now (turned, the safe area, the buttons shown or not); a change of it ends what
+// the fingers held (none keeps a meaning it had in the old layout)
+static void ios_layout(void) {
+    int ow = 0, oh = 0, ww = 0, wh = 0;
+    if (SDL_GetRendererOutputSize(sRen, &ow, &oh) != 0 || ow <= 0 || oh <= 0) return;
+    SDL_GetWindowSize(sWin, &ww, &wh);
+    sPt = ww > 0 ? (float)ow / (float)ww : 1;
+    float in[4];
+    ios_safe_area(sWin, in);
+    for (int i = 0; i < 4; i++) in[i] *= sPt;
+    if (ow != sLayout.w || oh != sLayout.h || sShowControls != sLayout.controls) tc_reset(&sTouch);
+    tc_layout(&sLayout, ow, oh, sPt, in, sShowControls);
+}
+
+// the controls, each from a texture made once per size and look (touch_controls.c draws them)
+static void ios_draw_controls(void) {
+    uint32_t held = tc_held(&sTouch), dirs = tc_dpad_dirs(&sTouch);
+    for (int b = 0; b < TC_COUNT; b++) {
+        TcRect r = sLayout.button[b];
+        int w = (int)(r.w + 0.5f), h = (int)(r.h + 0.5f);
+        if (w <= 0 || h <= 0) continue;
+        if (w != sButtonW[b] || h != sButtonH[b]) {
+            for (int v = 0; v < 16; v++) {
+                if (sButtonTex[b][v]) SDL_DestroyTexture(sButtonTex[b][v]);
+                sButtonTex[b][v] = 0;
+            }
+            sButtonW[b] = w, sButtonH[b] = h;
+        }
+        int v = b == TC_DPAD ? (int)(dirs >> 4 & 15) : (int)(held >> b & 1);
+        SDL_Texture **t = &sButtonTex[b][v];
+        if (!*t) {
+            uint32_t *px = malloc((size_t)w * (size_t)h * 4);
+            if (!px) continue;
+            tc_draw(px, w, h, b, b == TC_DPAD ? 0 : v, b == TC_DPAD ? (uint32_t)v << 4 : 0);
+            *t = SDL_CreateTexture(sRen, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, h);
+            if (*t) {
+                SDL_UpdateTexture(*t, 0, px, w * 4);
+                SDL_SetTextureBlendMode(*t, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureScaleMode(*t, SDL_ScaleModeNearest);
+            }
+            free(px);
+            if (!*t) continue;
+        }
+        SDL_Rect dst = {(int)(r.x + 0.5f), (int)(r.y + 0.5f), w, h};
+        SDL_RenderCopy(sRen, *t, 0, &dst);
+    }
+}
+
+// the frame: the screens in their place - drawn at a whole multiple of the DS's pixels (sharp), then smoothed to the
+// size they have (no uneven pixels) - the binding screen over them while it is open, the controls around them
+static void ios_show(const uint32_t *overlay, int changed) {
+    SDL_UpdateTexture(sTex, 0, sShm->pixels, 256 * 4);
+    if (overlay) {
+        if (!sOverlayTex) {
+            sOverlayTex = SDL_CreateTexture(sRen, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 256, 384);
+            if (sOverlayTex) SDL_SetTextureBlendMode(sOverlayTex, SDL_BLENDMODE_BLEND);
+            changed = 1;
+        }
+        if (sOverlayTex && changed) SDL_UpdateTexture(sOverlayTex, 0, overlay, 256 * 4);
+    }
+    SDL_SetRenderTarget(sRen, 0);
+    SDL_SetRenderDrawColor(sRen, 0, 0, 0, 255);
+    SDL_RenderClear(sRen);
+    TcRect sc = sLayout.screens;
+    SDL_FRect dst = {sc.x, sc.y, sc.w, sc.h};
+    int k = (int)SDL_ceilf(sc.w / 256.0f - 0.01f);
+    k = k < 1 ? 1 : k > 8 ? 8 : k;
+    if (k != sSharpK) {
+        if (sSharp) SDL_DestroyTexture(sSharp);
+        sSharp = SDL_CreateTexture(sRen, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, 256 * k, 384 * k);
+        if (sSharp) SDL_SetTextureScaleMode(sSharp, SDL_ScaleModeLinear);
+        sSharpK = k;
+    }
+    if (sSharp && SDL_SetRenderTarget(sRen, sSharp) == 0) {
+        SDL_RenderCopy(sRen, sTex, 0, 0);
+        if (overlay && sOverlayTex) SDL_RenderCopy(sRen, sOverlayTex, 0, 0);
+        SDL_SetRenderTarget(sRen, 0);
+        SDL_RenderCopyF(sRen, sSharp, 0, &dst);
+    } else {  // (no render targets: the DS's pixels straight to the window)
+        SDL_SetRenderTarget(sRen, 0);
+        SDL_RenderCopyF(sRen, sTex, 0, &dst);
+        if (overlay && sOverlayTex) SDL_RenderCopyF(sRen, sOverlayTex, 0, &dst);
+    }
+    if (sLayout.controls) ios_draw_controls();
+}
+
+// the app in the background: the game holds (no drawing - iOS doesn't allow it there - and no sound) until it is back
+static void ios_background(void) {
+    host_set_paused(1);
+    if (sDev) SDL_PauseAudioDevice(sDev, 1);
+    tc_reset(&sTouch);
+    SDL_Event e;
+    while (sInBackground && !sShm->quit) {
+        if (SDL_WaitEventTimeout(&e, 250)) handle(&e);
+    }
+    tc_reset(&sTouch);
+    if (sDev) SDL_PauseAudioDevice(sDev, 0);
+    host_set_paused(0);
+}
+#endif
+
 // the frame and, while it is open, the binding screen over it
 static void show(void) {
     int changed;
     const uint32_t *overlay = ui_overlay(&changed);
+#if HOST_IOS
+    ios_show(overlay, changed);
+    window_shot();
+    if (sPendingShot[0]) shot(sPendingShot), sPendingShot[0] = 0;
+    SDL_RenderPresent(sRen);
+    return;
+#endif
     if (sGpu) {
         int w, h;
         SDL_GetWindowSizeInPixels(sWin, &w, &h);
@@ -472,10 +706,18 @@ static void show(void) {
 // waits here
 static void frame_body(void) {
     SDL_Event e;
+#if HOST_IOS
+    if (sInBackground) ios_background();
+    ios_layout();
+#endif
     while (SDL_PollEvent(&e)) handle(&e);
     script_step();
     if (ui_is_open()) host_set_paused(1);
     while (ui_is_open() && !sShm->quit) {
+#if HOST_IOS
+        if (sInBackground) ios_background();
+        ios_layout();
+#endif
         show();
         if (SDL_WaitEventTimeout(&e, 50)) {
             handle(&e);
@@ -484,8 +726,14 @@ static void frame_body(void) {
         script_step();
     }
     host_set_paused(0);
-    update_touch();
+#if HOST_IOS
+    if (sInBackground) return;  // (went to the background just now: nothing drawn; the next frame waits)
+    ios_layout();               // (the buttons shown or hidden by this frame's events)
+    sShm->keys = keyboard_keys() | pad_keys() | tc_keys(&sTouch);
+#else
     sShm->keys = keyboard_keys() | pad_keys();
+#endif
+    update_touch();
     show();
 }
 

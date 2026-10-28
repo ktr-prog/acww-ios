@@ -76,7 +76,7 @@ extern HostSysWork gHostSysWork;
 
 // HOST_MEM_RUNTIME_ALIGN (Windows, macOS): COFF objects can't ask for more than 8 KB of alignment, Mach-O ones for
 // more than 32 KB, so the blocks aligned more (DTCM, ITCM, the main RAM block; vram.c's banks and windows) are
-// allocated at start-up (HostMem_Init, from main.c's early_init) and their names stand for the allocations (sizeof
+// allocated at start-up (HostMem_Init, from early.c's early_init) and their names stand for the allocations (sizeof
 // still gives the block's size)
 #if defined(_WIN32) || defined(__APPLE__)
 #define HOST_MEM_RUNTIME_ALIGN 1

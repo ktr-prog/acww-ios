@@ -14,8 +14,8 @@ Supported version:
 
 ## Run it
 
-Linux on x86-64 and macOS (Apple silicon or Intel). On Linux you need GCC, Python 3, Ninja and SDL2's development
-files; on Debian or Ubuntu:
+Linux on x86-64, macOS (Apple silicon or Intel), and iPhone/iPad (iOS 14 or later, see below). On Linux you need
+GCC, Python 3, Ninja and SDL2's development files; on Debian or Ubuntu:
 
 ```
 sudo apt install build-essential python3 ninja-build libsdl2-dev
@@ -35,6 +35,13 @@ build/host64_usa/acww path/to/your/game.nds
 
 The game saves next to the ROM (`game.sav` for `game.nds`). Without `host_fetch_wgpu.py`, or on a machine without
 a GPU that WebGPU can use, the game is drawn by the CPU renderers instead.
+
+### iPhone and iPad
+
+GitHub builds the iOS app for you (no Mac needed): push this repository to GitHub, download the **ACWW-iOS** artifact
+of the **iOS** workflow, and install `ACWW.ipa` with a sideloading tool (AltStore, SideStore, Sideloadly, ...). Then
+copy your game into the app's folder with the Files app. Touch controls are on screen, and game controllers work.
+[`docs/ios.md`](docs/ios.md) has every step.
 
 ### Controls
 
