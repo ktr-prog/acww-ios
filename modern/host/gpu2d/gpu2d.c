@@ -601,9 +601,6 @@ void gpu2d_render_frame(const Gpu2dFrameInput *in) {
         memcpy(sPalettes[0], in->palette, 0x800);
         memcpy(sOams[0], in->oam, 0x800);
         sGpuFrame.paletteCount = sGpuFrame.oamCount = 1;
-        for (int n = 0; n < 2; n++)  // line 0's OBJs: prepared at the end of the last frame
-            for (int x = 0; x < SCREEN_W; x++)
-                sGpuFrame.obj0[n][x] = sEngine[n].haveNextLine0 ? pack_obj(&sEngine[n].objNextLine0, x) : 0;
         sGpuFrame.tables[0][G2T_SCREEN_A] = 0;
     }
     for (int n = 0; n < 2; n++) {
@@ -617,14 +614,27 @@ void gpu2d_render_frame(const Gpu2dFrameInput *in) {
         }
         e->refLine = 0;
     }
+    // The V-blank's lines after the first (193-262), now: the game's V-blank writes (all made at its start here, the
+    // runtime's time standing still while the game runs) are what the DS's last V-blank lines see. The windows' vertical
+    // flags step on them, and line 0's OBJs are prepared during line 262 - from this frame's OAM, VRAM and registers.
+    // (Stepping the flags with the last frame's registers left a window "inside" from line 0 whenever its old top was
+    // a V-blank line - the speech bubble's BG showing for a frame at the top of the screen, outside its window.)
+    for (int n = 0; n < 2; n++) {
+        Engine *e = &sEngine[n];
+        for (int line = SCREEN_H + 1; line < FRAME_LINES; line++) window_vertical(e, line);
+        gpu2d_render_obj_line(e, 0, &e->objNextLine0);
+        e->haveNextLine0 = 1;
+        if (sGpu)
+            for (int x = 0; x < SCREEN_W; x++) sGpuFrame.obj0[n][x] = pack_obj(&e->objNextLine0, x);
+    }
     // line by line, both engines: after each line its H-blank (in->hblank), whose register and palette writes the
     // lines below show
     for (int line = 0; line < SCREEN_H; line++) {
         for (int n = 0; n < 2; n++) {
             Engine *e = &sEngine[n];
             window_vertical(e, line);
-            // OBJs are prepared a line ahead (during the line before): line 0's during the previous frame's
-            // last line, before this frame's register, OAM and VRAM changes
+            // OBJs are prepared a line ahead (during the line before): line 0's during the V-blank's last line
+            // (above)
             if (sGpu) gpu_line(n, line);
             if (sGpu == 1) {}  // (the GPU draws the OBJs)
             else if (line == 0 && e->haveNextLine0) e->obj = e->objNextLine0;
@@ -649,9 +659,7 @@ void gpu2d_render_frame(const Gpu2dFrameInput *in) {
     }
     for (int n = 0; n < 2; n++) {
         Engine *e = &sEngine[n];
-        for (int line = SCREEN_H; line < FRAME_LINES; line++) window_vertical(e, line);
-        gpu2d_render_obj_line(e, 0, &e->objNextLine0);
-        e->haveNextLine0 = 1;
+        window_vertical(e, SCREEN_H);  // (line 192: before the V-blank's writes; the rest at the next frame's start)
     }
     // to the screens: engine A on the top screen if POWCNT1 bit 15 is set
     if (sGpu) sGpuFrame.tables[0][G2T_SCREEN_A] = (sPowCnt & 0x8000) ? 0 : 1;
