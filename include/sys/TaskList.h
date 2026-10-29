@@ -17,7 +17,7 @@ public:
     BOOL run();                       // 0x020ed54c
 
     /* 0x00 */ QNode *head;
-    /* 0x04 */ u32 tail;
+    /* 0x04 */ QNode *tail;  // (the list's tail as QList keeps it: a pointer, its size on 64-bit hosts)
     /* 0x08 */ TaskFn fn;
 };
 

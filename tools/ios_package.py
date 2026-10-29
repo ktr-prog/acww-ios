@@ -11,6 +11,7 @@ Only the Python standard library is used (the icons are drawn here, see draw_ico
 import argparse
 import os
 import plistlib
+import re
 import shutil
 import stat
 import struct
@@ -21,7 +22,8 @@ import zipfile
 import zlib
 from pathlib import Path
 
-APP_NAME = "ACWW"
+APP_NAME = "ACWW"         # (the bundle's name: ACWW.app)
+DISPLAY_NAME = "AC:WW"    # (on the home screen and in the Files app)
 EXECUTABLE = "acww"
 BUNDLE_ID = "io.github.acww-native.acww"
 MIN_IOS = "14.0"
@@ -40,7 +42,7 @@ def info_plist(version: str, build: str) -> dict:
               "UIInterfaceOrientationLandscapeRight"]
     return {
         "CFBundleDevelopmentRegion": "en",
-        "CFBundleDisplayName": APP_NAME,
+        "CFBundleDisplayName": DISPLAY_NAME,
         "CFBundleExecutable": EXECUTABLE,
         "CFBundleIdentifier": BUNDLE_ID,
         "CFBundleInfoDictionaryVersion": "6.0",
@@ -116,6 +118,33 @@ def draw_icon(n: int) -> bytes:
             + chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b""))
 
 
+def custom_icon(src: str, dst: Path, n: int) -> bool:
+    """The user's picture as an n x n PNG icon (sips on a Mac, else Pillow); False if there is none."""
+    if not src or not os.path.isfile(src):
+        return False
+    if shutil.which("sips"):
+        out = subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", src], capture_output=True, text=True,
+                             check=True).stdout
+        w = int(re.search(r"pixelWidth: (\d+)", out).group(1))
+        h = int(re.search(r"pixelHeight: (\d+)", out).group(1))
+        side = min(w, h)
+        tmp = str(dst) + ".tmp.png"
+        subprocess.run(["sips", "-s", "format", "png", "--cropToHeightWidth", str(side), str(side), src, "--out", tmp],
+                       check=True, capture_output=True)
+        subprocess.run(["sips", "-z", str(n), str(n), tmp, "--out", str(dst)], check=True, capture_output=True)
+        os.remove(tmp)
+        return True
+    try:
+        from PIL import Image
+    except ImportError:
+        sys.exit(f"ios_package.py: {src}: no sips (macOS) or Pillow to make the icon from it")
+    im = Image.open(src).convert("RGB")
+    side = min(im.size)
+    left, top = (im.size[0] - side) // 2, (im.size[1] - side) // 2
+    im.crop((left, top, left + side, top + side)).resize((n, n), Image.LANCZOS).save(dst, "PNG")
+    return True
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("binary", help="the iOS build's program (build/hostios_usa/acww)")
@@ -123,6 +152,9 @@ def main():
     p.add_argument("--version", default="1.0", help="CFBundleShortVersionString")
     p.add_argument("--build", default="1", help="CFBundleVersion")
     p.add_argument("--sign-adhoc", action="store_true", help="an ad-hoc signature (codesign, macOS only)")
+    p.add_argument("--icon", default="ios/icon.png",
+                   help="a picture for the app's icon (any size; cropped to a square in its middle), if the file is "
+                        "there; else the icon drawn here (default: ios/icon.png)")
     args = p.parse_args()
 
     binary = Path(args.binary)
@@ -145,7 +177,8 @@ def main():
         plistlib.dump(info_plist(args.version, args.build), f, fmt=plistlib.FMT_XML)
     (app / "PkgInfo").write_bytes(b"APPL????")
     for name, n in ICONS:
-        (app / name).write_bytes(draw_icon(n))
+        if not custom_icon(args.icon, app / name, n):
+            (app / name).write_bytes(draw_icon(n))
 
     if args.sign_adhoc:
         subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(app)], check=True)

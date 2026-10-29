@@ -147,6 +147,33 @@ static void default_firmware(void) {
     sNvramSize = SIZE;
 }
 
+// The DS's boot puts the firmware's user settings (the valid copy with the newer update counter, 0x74 bytes with the
+// counter and the CRC) at HW_NVRAM_USER_INFO (0x027ffc80), where the SDK reads them: the owner's name and birthday,
+// the language, and the touch screen's calibration (TP_GetUserInfo). Without them the calibration was all zero and
+// TP_GetCalibratedPoint put every touch at (0,0): touches that need a place (buttons, keys, the inventory) did
+// nothing, only "touch anywhere" did.
+static void firmware_user_settings(void) {
+    if (!sNvramSize) return;
+    u32 base = (u32)(sNvram[0x20] | sNvram[0x21] << 8) * 8;
+    const u8 *best = 0;
+    int bestCount = -1;
+    for (int copy = 0; copy < 2; copy++) {
+        u32 at = base + (u32)copy * 0x100;
+        if (at + 0x74 > sNvramSize) continue;
+        const u8 *u = sNvram + at;
+        u16 crc = (u16)(u[0x72] | u[0x73] << 8);
+        if (fw_crc16(0xffff, u, 0x70) != crc) continue;
+        int count = u[0x70] & 0x7f;
+        // (the newer one: the counters wrap at 0x80)
+        if (!best || ((count - bestCount) & 0x7f) == 1) { best = u; bestCount = count; }
+    }
+    if (!best) {
+        fprintf(stderr, "pxi7: the firmware has no valid user settings: none for the game\n");
+        return;
+    }
+    memcpy(gHostSysWork.nvramUserInfo, best, 0x74);
+}
+
 static void nvram_command(void) {
     u32 cmd = sNvWords[0] >> 8 & 0xff;
     u32 addr = (sNvWords[0] & 0xff) << 16 | (sNvWords[1] & 0xffff);
@@ -334,8 +361,9 @@ static u32 tp_raw(s32 sx, s32 sy) {
     const u8 *u = sNvram + (sNvramSize ? (sNvram[0x20] | sNvram[0x21] << 8) * 8 : 0) + 0x58;
     s32 ax1 = u[0] | u[1] << 8, ay1 = u[2] | u[3] << 8, sx1 = u[4], sy1 = u[5];
     s32 ax2 = u[6] | u[7] << 8, ay2 = u[8] | u[9] << 8, sx2 = u[10], sy2 = u[11];
-    s32 x = sx2 != sx1 ? ax1 + (sx - sx1) * (ax2 - ax1) / (sx2 - sx1) : 0;
-    s32 y = sy2 != sy1 ? ay1 + (sy - sy1) * (ay2 - ay1) / (sy2 - sy1) : 0;
+    // (the pixel's centre: the SDK's conversion back truncates, so aiming at the corner gave the pixel up-left of it)
+    s32 x = sx2 != sx1 ? ax1 + (2 * (sx - sx1) + 1) * (ax2 - ax1) / (2 * (sx2 - sx1)) : 0;
+    s32 y = sy2 != sy1 ? ay1 + (2 * (sy - sy1) + 1) * (ay2 - ay1) / (2 * (sy2 - sy1)) : 0;
     return (u32)(x & 0xfff) | (u32)(y & 0xfff) << 12 | 1u << 24;
 }
 
@@ -484,6 +512,7 @@ void pxi7_init(void) {
     if (f) { sNvramSize = (u32)fread(sNvram, 1, sizeof sNvram, f); fclose(f); }
     else if (fw) fprintf(stderr, "pxi7: can't read the firmware image %s: a default one\n", fw);
     if (!sNvramSize) default_firmware();
+    firmware_user_settings();  // (the copy the game reads: owner, language, the touch screen's calibration)
     wm7_init(sSavePath);  // (the MAC address and the wireless channels in the user settings' copy)
     // ARM7 callbacks ready for every tag (OSSystemWork.pxiHandleChecker[1])
     ((volatile u32 *)gHostSysWork.pxiHandleChecker)[1] = 0xffffffff;

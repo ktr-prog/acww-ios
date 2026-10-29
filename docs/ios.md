@@ -21,6 +21,10 @@ Notes:
   Actions minutes at ten times the rate of Linux minutes.
 - No game data is used for the build, and none is ever needed on GitHub. Don't upload your game there.
 
+**Your own icon (optional):** add a picture as `ios/icon.png` to your repository (any size; the middle square of it
+is used) and the next build uses it as the app's icon. Without it the app has a plain icon drawn by the build. Only
+add pictures you have the right to use, especially if the repository is public.
+
 ## 2. Install it on the device
 
 `ACWW.ipa` isn't signed for the App Store. Install it with a sideloading tool, which signs it with your own Apple ID:
@@ -36,7 +40,7 @@ With a free Apple ID:
 ## 3. Add your game
 
 1. Open the app once. It says that no game was found, and creates its folder.
-2. Open the **Files** app > **On My iPhone** (or **On My iPad**) > **ACWW**, and copy your `.nds` file there (from
+2. Open the **Files** app > **On My iPhone** (or **On My iPad**) > **AC:WW**, and copy your `.nds` file there (from
    iCloud Drive, a USB stick, AirDrop, or a Mac/PC: Finder or iTunes file sharing, the device's Files tab).
 3. Go back to the app and tap **I've added it - check again**.
 
@@ -64,7 +68,7 @@ The game pauses while the app is in the background and continues when you come b
 
 ## If something goes wrong: the log
 
-The app writes **`acww-log.txt`** into its folder (Files app > On My iPhone > ACWW): the sound device, the screen
+The app writes **`acww-log.txt`** into its folder (Files app > On My iPhone > AC:WW): the sound device, the screen
 layout, every touch on the bottom screen, the frame rate and the sound queue every 10 seconds, and, if the app
 crashes, where (with the function names and every game thread's stack). The previous run's log is kept as
 `acww-log-previous.txt`, so after a crash, open the app again and that file has the report. Send these files when

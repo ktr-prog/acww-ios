@@ -3,7 +3,7 @@
 // main() hands the process to UIKit through SDL (SDL_UIKitRunApp), which calls ios_main once the app has launched,
 // on the main thread; ios_main never returns while the game runs. The game is a .nds file in the app's Documents
 // folder: with UIFileSharingEnabled and LSSupportsOpeningDocumentsInPlace (Info.plist) the Files app shows that folder
-// as "On My iPhone / On My iPad > ACWW", and a Mac's Finder shows it under the device's Files tab. The save file is
+// as "On My iPhone / On My iPad > AC:WW", and a Mac's Finder shows it under the device's Files tab. The save file is
 // written next to the game (<name>.sav, pxi7.c), so it is in the same folder, where it can be backed up.
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
@@ -38,7 +38,7 @@ void ios_safe_area(SDL_Window *window, float out[4]) {
 }
 
 void ios_fatal_message(const char *text) {
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ACWW", text, NULL);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "AC:WW", text, NULL);
 }
 
 // a message box with up to three buttons; the index of the one pressed (the first: the default)
@@ -167,7 +167,7 @@ static NSString *find_rom(NSString *docs) {
         if (roms.count == 0) {
             static const char *const kButtons[] = {"I've added it - check again"};
             ask(SDL_MESSAGEBOX_INFORMATION, "Add your game",
-                "No game found.\n\nOpen the Files app, go to On My iPhone (or On My iPad) > ACWW, and copy your "
+                "No game found.\n\nOpen the Files app, go to On My iPhone (or On My iPad) > AC:WW, and copy your "
                 "Animal Crossing: Wild World (USA) .nds file there. Then come back here.",
                 kButtons, 1);
             continue;
