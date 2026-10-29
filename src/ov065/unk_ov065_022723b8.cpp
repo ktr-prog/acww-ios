@@ -1268,13 +1268,11 @@ BOOL DwcMatch_RemoveProfile(u32 v, s32 n) {
     if (g == NULL) {
         return FALSE;
     }
-    q = (u8 *)g;
     for (i = 0; i < n; i++) {
-        if (v == *(u32 *)(q + 0xf4)) {
+        if (v == g->memberProfileIds[i]) {  // (at 0xf4 on the DS)
             DwcMatch_RemoveMemberAt(i, n);
             return TRUE;
         }
-        q += 4;
     }
     return FALSE;
 }
@@ -3519,7 +3517,7 @@ void DwcMatch_ProcessServerSync(void)
             for (j = 1; j <= sDwcMatch->numClients; j++) {
                 u32 bits = sDwcMatchSyncOption->answeredAidMask;
                 DwcMatchControl *c2;
-                if ((bits & (1 << (((u8 *)sDwcMatch) + j)[0x2b8])) == 0) {
+                if ((bits & (1 << sDwcMatch->aids[j])) == 0) {
                     c2 = sDwcMatch;
                     if (DwcMatch_HandleResult(DwcMatch_SendCommand(0x11, c2->memberProfileIds[j], c2->memberIps[j], c2->memberPorts[j], 0, 0)) != 0) {
                         goto end;

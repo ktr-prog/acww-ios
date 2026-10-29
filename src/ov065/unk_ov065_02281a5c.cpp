@@ -170,7 +170,7 @@ s32 gpiInitSearchData(void *h0, void *out, s32 p2) {
         gpiSetErrorString(h, "Out of memory.");
         return 1;
     }
-    memset(cn, 0, 0x144);
+    memset(cn, 0, sizeof *cn);  // (0x144 on the DS)
     cn->type = p2;
     cn->sock = -1;
     cn->inputBuffer = 0;

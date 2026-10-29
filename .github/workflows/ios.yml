@@ -46,6 +46,12 @@ jobs:
             $S/exchannel.c $S/seq.c -lm -o build/stream_test
           build/stream_test
 
+      - name: Check the Wiimmfi access point's network
+        run: |
+          cc -O1 -Wall -Imodern/host -Iinclude modern/host/tests/net_nat_test.c modern/host/net_nat.c -lpthread \
+            -o build/net_nat_test
+          build/net_nat_test
+
       - name: Restore SDL2 for iOS
         id: sdl
         uses: actions/cache@v4

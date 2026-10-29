@@ -50,6 +50,70 @@ static u32 scripted_keys(void) {
     return k;
 }
 
+// ---- test runs: a map of the town and walking to places by themselves (docs/host.md, "Test scripts")
+// ACWW_TOWNDUMP=<frame>:<file>: the scene's unit grid at that frame - '.' walkable, '#' not, and the structures (item
+// codes 0x5000-0x50ff: houses, shops, the gate...) with their units. ACWW_GOTO="<frame>:x,z[;x,z...]": from that frame
+// the D-pad steers the player to each unit (x, z; fractions allowed) in turn ("goto:" lines say when one is reached
+// or the walk is stuck). Positions in units, as `ACWW_POSLOG`'s values / 2.
+typedef struct { void *blocks; s32 width, height; } HostBlockMapView;  // (include/town/BlockMap.h's first members)
+extern HostBlockMapView *gSceneBlockMap;
+extern int TownMap_IsUnitWalkable(s32 x, s32 y, void *grid);
+extern u16 *BlockMap_GetItemPtr(void *g, s32 hx, s32 hy, s32 lx, s32 ly, u8 layer);
+extern void *PlayerActor_GetBodyPos(u32 idx);
+static const char *sTownDump, *sGoto;
+HOST_STATE_KEEP(sTownDump)
+HOST_STATE_KEEP(sGoto)
+static void town_dump(void) {
+    if (!sTownDump) sTownDump = getenv("ACWW_TOWNDUMP") ? getenv("ACWW_TOWNDUMP") : "";
+    unsigned at;
+    char path[512];
+    if (sscanf(sTownDump, "%u:%511s", &at, path) != 2 || at != (unsigned)host_frame()) return;
+    HostBlockMapView *g = gSceneBlockMap;
+    FILE *f = g ? fopen(path, "w") : 0;
+    if (!f) return;
+    fprintf(f, "blocks %d x %d\n", g->width, g->height);
+    for (s32 z = 0; z < g->height * 16; z++) {
+        for (s32 x = 0; x < g->width * 16; x++) fputc(TownMap_IsUnitWalkable(x, z, 0) ? '.' : '#', f);
+        fputc('\n', f);
+    }
+    for (s32 z = 0; z < g->height * 16; z++)
+        for (s32 x = 0; x < g->width * 16; x++) {
+            u16 *c = BlockMap_GetItemPtr(g, x >> 4, z >> 4, x & 15, z & 15, 0);
+            if (c && (*c & 0xff00) == 0x5000) fprintf(f, "structure %04x at %d %d\n", *c, x, z);
+        }
+    fclose(f);
+}
+static u32 goto_keys(void) {
+    if (!sGoto) sGoto = getenv("ACWW_GOTO") ? getenv("ACWW_GOTO") : "";
+    static int wp = 0, done = 0;
+    static float bestD = 1e9f;
+    static u64 bestAt = 0;
+    unsigned start;
+    int n = 0;
+    if (done || sscanf(sGoto, "%u:%n", &start, &n) != 1 || host_frame() < start) return 0;
+    const char *p = sGoto + n;
+    for (int i = 0; i < wp && p; i++) { p = strchr(p, ';'); if (p) p++; }
+    float tx, tz;
+    if (!p || sscanf(p, "%f,%f", &tx, &tz) != 2) { done = 1; return 0; }
+    const s32 *pos = PlayerActor_GetBodyPos(4);
+    if (!pos) return 0;
+    float x = pos[0] / 8192.0f, z = pos[2] / 8192.0f, dx = tx - x, dz = tz - z, d = dx * dx + dz * dz;
+    if (d < 0.3f * 0.3f) {
+        fprintf(stderr, "goto: at %.2f %.2f (waypoint %d) frame %llu\n", x, z, wp, (unsigned long long)host_frame());
+        wp++, bestD = 1e9f, bestAt = host_frame();
+        return 0;
+    }
+    if (d < bestD - 0.01f) bestD = d, bestAt = host_frame();
+    else if (host_frame() - bestAt == 180)
+        fprintf(stderr, "goto: stuck at %.2f %.2f on the way to %.2f %.2f, frame %llu\n", x, z, tx, tz,
+                (unsigned long long)host_frame());
+    u32 k = 0;
+    float ax = dx < 0 ? -dx : dx, az = dz < 0 ? -dz : dz;
+    if (ax > 0.15f && ax > az * 0.4f) k |= dx > 0 ? 0x10 : 0x20;  // Right / Left
+    if (az > 0.15f && az > ax * 0.4f) k |= dz > 0 ? 0x80 : 0x40;  // Down / Up
+    return k;
+}
+
 // at each VBlank: publish the frame, take the input
 void frontend_frame(void) {
     u16 keyinput = 0x3ff;  // KEYINPUT: released bits are 1
@@ -68,7 +132,8 @@ void frontend_frame(void) {
         keyinput = (u16)(~k & 0x3ff);
         xy = (u16)(0x2000 | (~k & 0x0c00));
     }
-    u32 sk = scripted_keys();
+    town_dump();
+    u32 sk = scripted_keys() | goto_keys();
     keyinput &= (u16)~(sk & 0x3ff);
     xy &= (u16)~(sk & 0x0c00);
     *(u16 *)host_io(0x04000130) = keyinput;

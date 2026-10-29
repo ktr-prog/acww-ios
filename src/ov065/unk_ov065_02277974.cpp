@@ -95,7 +95,7 @@ void DwcInet_StartConnect() {
     if (sDwcInet != NULL) {
         if (sDwcInet->state == 1) {
             DwcInetControl *s;
-            MI_CpuFill8(&l, 0, 12);
+            MI_CpuFill8(&l, 0, sizeof l);  // (12 on the DS)
             s = sDwcInet;
             l.dmaNo = s->apInitParam0;
             l.powerMode = s->apInitParam1;

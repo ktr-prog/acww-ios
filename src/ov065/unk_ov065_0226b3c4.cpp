@@ -117,27 +117,30 @@ u32 WifiAp_PrefixToNetmask(s32 n);
 u32 WifiAp_ReadAddress(u8 *p);
 void WifiAp_BuildSocketConfig(u8 *a, WifiApContext *b, u8 *c);
 
+// a: the control block (its allocator first), c: the socket library's start-up settings (the DS wrote them as words
+// 1-8: the allocator, then DHCP and the addresses - by member here, the 64-bit layout differs)
 void WifiAp_BuildSocketConfig(u8 *a, WifiApContext *b, u8 *c) {
-    u32 *o = (u32 *)c;
-    MI_CpuCopy8(&sWifiApSocketConfigTemplate, c, 0x58);
-    o[1] = ((u32 *)a)[0];
-    o[2] = ((u32 *)a)[1];
+    SockStartupConfig *o = (SockStartupConfig *)c;
+    WifiApControl *f = (WifiApControl *)a;
+    MI_CpuCopy8(&sWifiApSocketConfigTemplate, o, sizeof *o);
+    o->allocFunc = (SockAllocFunc)f->unk_00;
+    o->freeFunc = (SockFreeFunc)f->unk_04;
     if (b->apType < 6) {
         WifiApUserSetting *q = &b->userSettings[WifiAp_FoldApIndex(b->apType)];
         if (q->ip[0] != 0) {
-            o[3] = 0;
-            o[4] = WifiAp_ReadAddress(q->ip);
-            o[5] = WifiAp_PrefixToNetmask(q->prefixLength);
-            o[6] = WifiAp_ReadAddress(q->gateway);
-            o[7] = WifiAp_ReadAddress(q->dns[0]);
-            o[8] = WifiAp_ReadAddress(q->dns[1]);
+            o->dhcpMode = 0;
+            o->ownIp = WifiAp_ReadAddress(q->ip);
+            o->netmask = WifiAp_PrefixToNetmask(q->prefixLength);
+            o->gateway = WifiAp_ReadAddress(q->gateway);
+            o->dns1 = WifiAp_ReadAddress(q->dns[0]);
+            o->dns2 = WifiAp_ReadAddress(q->dns[1]);
         } else {
-            o[3] = 1;
-            o[4] = 0;
-            o[5] = 0;
-            o[6] = 0;
-            o[7] = 0;
-            o[8] = 0;
+            o->dhcpMode = 1;
+            o->ownIp = 0;
+            o->netmask = 0;
+            o->gateway = 0;
+            o->dns1 = 0;
+            o->dns2 = 0;
         }
     }
 }
@@ -700,7 +703,7 @@ u32 WifiAp_BuildSearchFromFound(s32 n, WifiApFoundInfo *p, WifiApSearchEntry *ou
 }
 
 s32 WifiAp_StepFailedCleanup(void) {
-    if (WifiAp_CleanupStep((u8 *)WifiAp_GetBlock(1) + 0xa) == 1) {
+    if (WifiAp_CleanupStep(&((WifiApControl *)WifiAp_GetBlock(1))->errorState) == 1) {  // (0xa on the DS)
         return 0x12;
     }
     return 0x11;

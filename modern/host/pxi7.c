@@ -175,6 +175,77 @@ static void firmware_user_settings(void) {
     memcpy(gHostSysWork.nvramUserInfo, best, 0x74);
 }
 
+// ---- the Wi-Fi settings: DWC's backup area, four pages of 0x100 bytes below the user settings (each with a CRC16 at
+// 0xfe): the three connections (access points) and the WFC user ID (0xf0, in pages 0 and 1). Kept in a file next to
+// the save file (<save>.wfc), so the WFC ID - Wiimmfi's account - stays the same. With the settings' WIIMMFI on,
+// connection 1 is the emulated access point (wm7.c, net_nat.c) with Wiimmfi's DNS server; off, it is taken out again
+// (only if it is that one).
+#include "host_features.h"
+#include "net_nat.h"
+static char sWfcPath[1024];
+static u32 wfc_base(void) { return (u32)(sNvram[0x20] | sNvram[0x21] << 8) * 8 - 0x400; }
+static int wfc_page_ok(const u8 *p) { return fw_crc16(0, p, 0xfe) == (u16)(p[0xfe] | p[0xff] << 8); }
+static void wfc_page_crc(u8 *p) {
+    u16 c = fw_crc16(0, p, 0xfe);
+    p[0xfe] = (u8)c, p[0xff] = (u8)(c >> 8);
+}
+static void wfc_save(void) {
+    if (!sWfcPath[0] || !sNvramSize) return;
+    char tmp[1100];
+    snprintf(tmp, sizeof tmp, "%s.tmp", sWfcPath);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return;
+    int ok = fwrite(sNvram + wfc_base(), 1, 0x400, f) == 0x400;
+    if (fclose(f) != 0 || !ok || rename(tmp, sWfcPath) != 0) fprintf(stderr, "pxi7: can't write %s\n", sWfcPath);
+}
+static void wfc_load(void) {
+    if (!sWfcPath[0] || !sNvramSize) return;
+    FILE *f = fopen(sWfcPath, "rb");
+    if (!f) return;
+    u8 b[0x400];
+    if (fread(b, 1, 0x400, f) == 0x400) memcpy(sNvram + wfc_base(), b, 0x400);
+    fclose(f);
+}
+static void wfc_sync(void) {
+    if (!sNvramSize || wfc_base() + 0x400 > sNvramSize) return;
+    u8 *w = sNvram + wfc_base();
+    int on = host_wiimmfi_on() && nat_supported();
+    int ours = wfc_page_ok(w) && w[0xe7] == 0 && !memcmp(w + 0x40, NAT_AP_SSID, sizeof NAT_AP_SSID);
+    if (on == ours) return;
+    if (on) {
+        if (!wfc_page_ok(w) || !wfc_page_ok(w + 0x100) || !wfc_page_ok(w + 0x200) || !wfc_page_ok(w + 0x300)) {
+            // (a fresh area, or a damaged one: as DWC would set it up - no connections, no ID yet (made at the first
+            // connection) - so that DWC finds it valid and keeps connection 1)
+            u8 id[14] = {0};
+            if (wfc_page_ok(w)) memcpy(id, w + 0xf0, 14);
+            else if (wfc_page_ok(w + 0x100)) memcpy(id, w + 0x1f0, 14);
+            memset(w, 0, 0x400);
+            for (int i = 0; i < 3; i++) w[i * 0x100 + 0xe7] = 0xff;
+            memcpy(w + 0xf0, id, 14), memcpy(w + 0x1f0, id, 14);
+            for (int i = 1; i < 4; i++) wfc_page_crc(w + i * 0x100);
+        }
+        memset(w, 0, 0xef);
+        memcpy(w + 0x40, NAT_AP_SSID, sizeof NAT_AP_SSID - 1);
+        w[0xc8] = 167, w[0xc9] = 86, w[0xca] = 108, w[0xcb] = 126;  // the DNS server: Wiimmfi's (the rest: DHCP)
+        w[0xea] = 0x78, w[0xeb] = 0x05;  // MTU 1400
+        w[0xe6] = 0;  // no WEP
+        w[0xe7] = 0;  // set up
+        w[0xef] |= 1, w[0x1ef] |= 1;
+        fprintf(stderr, "pxi7: Wi-Fi connection 1: the Wiimmfi access point\n");
+    } else {
+        memset(w, 0, 0xef);
+        w[0xe7] = 0xff;
+        w[0xef] &= ~1, w[0x1ef] &= ~1;
+        fprintf(stderr, "pxi7: Wi-Fi connection 1 taken out (Wiimmfi off)\n");
+    }
+    wfc_page_crc(w), wfc_page_crc(w + 0x100);
+    wfc_save();
+}
+static int wfc_touched(u32 addr, u32 size) {
+    u32 b = wfc_base();
+    return sNvramSize && addr < b + 0x400 && addr + size > b;
+}
+
 static void nvram_command(void) {
     u32 cmd = sNvWords[0] >> 8 & 0xff;
     u32 addr = (sNvWords[0] & 0xff) << 16 | (sNvWords[1] & 0xffff);
@@ -182,6 +253,7 @@ static void nvram_command(void) {
     u8 *ptr = take_pointer(4);  // the buffer (READ: in words 4-5 on the DS, PW: 3-4, RDSR: 0-2)
     switch (cmd) {
     case 0x23: case 0x24:  // READ, FAST_READ
+        if (wfc_touched(addr, size)) wfc_sync();
         for (u32 i = 0; i < size; i++) ptr[i] = sNvramSize ? sNvram[(addr + i) % sNvramSize] : 0xff;
         break;
     case 0x22:             // RDSR: one byte
@@ -193,6 +265,7 @@ static void nvram_command(void) {
         u32 n = sNvWords[2] & 0xffff;
         const u8 *src = ptr;
         for (u32 i = 0; i < n && sNvramSize; i++) sNvram[(addr + i) % sNvramSize] = src[i];
+        if (wfc_touched(addr, n)) wfc_save();
         size = n;
         sNvStatus &= ~2;
         break;
@@ -524,6 +597,12 @@ void pxi7_init(void) {
     if (f) { sNvramSize = (u32)fread(sNvram, 1, sizeof sNvram, f); fclose(f); }
     else if (fw) fprintf(stderr, "pxi7: can't read the firmware image %s: a default one\n", fw);
     if (!sNvramSize) default_firmware();
+    if (sSavePath) {  // (the Wi-Fi settings next to the save file: <name>.wfc)
+        size_t n = strlen(sSavePath);
+        if (n > 4 && !strcmp(sSavePath + n - 4, ".sav")) n -= 4;
+        snprintf(sWfcPath, sizeof sWfcPath, "%.*s.wfc", (int)n, sSavePath);
+        wfc_load();
+    }
     firmware_user_settings();  // (the copy the game reads: owner, language, the touch screen's calibration)
     wm7_init(sSavePath);  // (the MAC address and the wireless channels in the user settings' copy)
     // ARM7 callbacks ready for every tag (OSSystemWork.pxiHandleChecker[1])

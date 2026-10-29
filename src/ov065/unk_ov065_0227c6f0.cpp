@@ -64,7 +64,7 @@ s32 gpiInitialize(GPConnection *h, s32 a, s32 b) {
     if (c == NULL) {
         return 1;
     }
-    memset(c, 0, 0x490);
+    memset(c, 0, sizeof *c);  // (0x490 on the DS)
     c->errorString[0] = 0;
     c->errorCode = 0;
     c->infoCaching = 1;

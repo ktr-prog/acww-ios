@@ -26,7 +26,7 @@ u8 *mylsearch(void *key, u8 *base, s32 n, s32 size, ArrayCompareFn cmp);
 u8 *mybsearch(void *key, u8 *base, s32 n, s32 size, ArrayCompareFn cmp, s32 *found);
 #endif
 #ifndef PROTO_LOCAL_get_sockaddrin
-s32 get_sockaddrin(s32 a, u32 port, SockAddrIn *out);
+s32 get_sockaddrin(const char *a, u32 port, SockAddrIn *out);
 #endif
 #ifdef __cplusplus
 }

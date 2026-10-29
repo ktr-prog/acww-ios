@@ -3,6 +3,7 @@
 #include "net/WifiApNdwcshapPermTable.h"
 #include "net/DwcHttp.h"
 #include "net/WifiApContext.h"
+#include "net/WifiApControl.h"
 #include "net/NasAuthWork.h"
 #include "types64.h"
 #include "proto/autoload_2/unk_02114410.h"
@@ -509,12 +510,12 @@ s32 WifiAp_StepStartNetCheck(void) {
 }
 
 s32 WifiAp_StepWaitNetCheck(WifiApContext *c) {
-    u8 *p = (u8 *)WifiAp_GetBlock(1);
+    WifiApControl *p = (WifiApControl *)WifiAp_GetBlock(1);
     s32 r = NetCheck_GetState();
     if (r != 0) {
         s32 x = WifiAp_FoldApIndex(c->apType);
-        if (p[0x15] == x) {
-            *(u32 *)(p + 0x10) = NetCheck_GetErrorCode();
+        if (p->furthestApIndex == x) {  // (0x15 and 0x10 on the DS)
+            p->netCheckError = NetCheck_GetErrorCode();
         }
         NetCheck_Destroy();
         if (r != 0xb) {

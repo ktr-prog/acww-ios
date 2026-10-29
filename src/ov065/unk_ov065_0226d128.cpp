@@ -491,7 +491,7 @@ s32 NasAuth_BuildRequest(void *a0, const char *a1, const u16 *a2, DwcHttpField *
                   time.hour, time.minute, time.second);
     MI_CpuCopy8(owner.nickName, nick, 0x14);
     nick[0x14] = 0;
-    MI_CpuFill8(&form, 0, 0xc);
+    MI_CpuFill8(&form, 0, sizeof form);  // (0xc on the DS)
     form.entries = a3;
     form.capacity = a4;
     if (a5 != 1) {

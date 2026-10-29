@@ -4,6 +4,7 @@
 #include "net/WifiApControl.h"
 #include "net/WifiApConfig.h"
 #include "net/WifiApContext.h"
+#include "net/SockStartupConfig.h"
 #include "proto/ov065/unk_ov065_0226aca8.h"
 #include "proto/ov065/unk_ov065_0226ad84.h"
 
@@ -49,9 +50,9 @@ s32 WifiAp_Init(WifiApConfig *cfg) {
     WifiApAllocator *f8;
     WifiApControl *fc;
     s32 r;
-    fc = (WifiApControl *)cfg->allocFunc(1, 0x18);
+    fc = (WifiApControl *)cfg->allocFunc(1, sizeof(WifiApControl));  // (0x18 on the DS)
     sWifiApControl = fc;
-    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApControl, 0x18); }
+    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApControl, sizeof(WifiApControl)); }
     fc = sWifiApControl;
     fc->unk_00 = cfg->allocFunc;
     fc->unk_04 = cfg->freeFunc;
@@ -60,12 +61,12 @@ s32 WifiAp_Init(WifiApConfig *cfg) {
     fc->allocMask = 1;
     sWifiApContext = (WifiApContext *)WifiAp_AllocBlock(0x10, sizeof(WifiApContext));
     sWifiApLinkWork = WifiAp_AllocBlock(2, 0x2300);
-    sWifiApSocketConfig = WifiAp_AllocBlock(4, 0x58);
-    sWifiApAllocator = (WifiApAllocator *)WifiAp_AllocBlock(8, 0xc);
+    sWifiApSocketConfig = WifiAp_AllocBlock(4, sizeof(SockStartupConfig));  // (0x58 on the DS)
+    sWifiApAllocator = (WifiApAllocator *)WifiAp_AllocBlock(8, sizeof(WifiApAllocator));  // (0xc on the DS)
     { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApContext, sizeof(WifiApContext)); }
     { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApLinkWork, 0x2300); }
-    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApSocketConfig, 0x58); }
-    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApAllocator, 0xc); }
+    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApSocketConfig, sizeof(SockStartupConfig)); }
+    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApAllocator, sizeof(WifiApAllocator)); }
     ec = sWifiApContext;
     ec->dmaNo = cfg->dmaNo;
     ec->powerMode = cfg->powerMode;
@@ -197,12 +198,12 @@ void WifiAp_FreeAll() {
     if ((f->allocMask & 8) != 0) {
         void *o = WifiAp_GetBlock(8);
         f->allocMask &= ~8;
-        f->unk_04(8, o, 0xc);
+        f->unk_04(8, o, sizeof(WifiApAllocator));
     }
     if ((f->allocMask & 4) != 0) {
         void *o = WifiAp_GetBlock(4);
         f->allocMask &= ~4;
-        f->unk_04(4, o, 0x58);
+        f->unk_04(4, o, sizeof(SockStartupConfig));
     }
     if ((f->allocMask & 2) != 0) {
         void *o = WifiAp_GetBlock(2);
@@ -211,7 +212,7 @@ void WifiAp_FreeAll() {
     }
     if ((f->allocMask & 1) != 0) {
         f->allocMask &= ~1;
-        f->unk_04(1, f, 0x18);
+        f->unk_04(1, f, sizeof(WifiApControl));
     }
 }
 

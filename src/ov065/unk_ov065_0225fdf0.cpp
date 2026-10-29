@@ -27,8 +27,9 @@ namespace Unk_ov065_02260de4_Ns {
 
 // ov065_003: socket-library style free functions (0x02260de4..0x02261638)
 
+// (the socket's handle, not its address: GameSpy's code keeps them in ints - GsPollFd, include/net/GsSocket.h)
 struct SockPollFd {
-    SockCoreSocket *sock;
+    s32 sock;
     s16 events;
     u16 revents;
 };
@@ -96,29 +97,51 @@ SockHostEnt sHostent;
 SockCoreConfig sSockStartupConfig;
 char sHostentName[0x104];
 
+// Sockets are handed out as small numbers (1-64), not their addresses: on the DS a socket was its 32-bit address,
+// and the callers keep it in an int (GameSpy's SOCKET, the poll records, ov001's tests); a 64-bit address there lost
+// its upper half. HOST_SOCK_HANDLES holds the sockets by number.
+#define HOST_SOCK_HANDLES 64
+SockCoreSocket *sSockHandles[HOST_SOCK_HANDLES];
+static sptr Sock_NewHandle(sptr r) {
+    if (r < 0) {
+        return r;  // (an error code)
+    }
+    for (s32 i = 0; i < HOST_SOCK_HANDLES; i++) {
+        if (sSockHandles[i] == NULL) {
+            sSockHandles[i] = (SockCoreSocket *)r;
+            return i + 1;
+        }
+    }
+    SockCore_Close((SockCoreSocket *)r);
+    return -0x1c;  // (no room: as the DS's "no memory")
+}
+static SockCoreSocket *Sock_Of(sptr h) {
+    return h > 0 && h <= HOST_SOCK_HANDLES ? sSockHandles[h - 1] : NULL;
+}
+
 sptr Sock_Create(s32 a, s32 b) {
     if (b == 1) {
-        return SockCore_Create(sSockTcpParams);
+        return Sock_NewHandle(SockCore_Create(sSockTcpParams));
     }
-    return SockCore_Create(sSockUdpParams);
+    return Sock_NewHandle(SockCore_Create(sSockUdpParams));
 }
 
 s32 Sock_Bind(sptr a, SockAddrIn *sa) {
-    return SockCore_Bind((SockCoreSocket *)a, HTONS(sa->port));
+    return SockCore_Bind(Sock_Of(a), HTONS(sa->port));
 }
 
 s32 Sock_Connect(sptr a, SockAddrIn *sa) {
-    return SockCore_Connect((SockCoreSocket *)a, HTONS(sa->port), HTONL(sa->addr));
+    return SockCore_Connect(Sock_Of(a), HTONS(sa->port), HTONL(sa->addr));
 }
 
 s32 Sock_Recv(sptr a, void *b, s32 c, u32 d) {
-    return SockCore_RecvFrom((SockCoreSocket *)a, b, c, 0, 0, d);
+    return SockCore_RecvFrom(Sock_Of(a), b, c, 0, 0, d);
 }
 
 s32 Sock_RecvFrom(sptr a, void *b, s32 c, u32 d, SockAddrIn *sa) {
     u16 port;
     u32 ip;
-    s32 r = SockCore_RecvFrom((SockCoreSocket *)a, b, c, &port, &ip, d);
+    s32 r = SockCore_RecvFrom(Sock_Of(a), b, c, &port, &ip, d);
     if (r >= 0) {
         SockAddrIn *q = *(SockAddrIn *volatile *)&sa;
         if (q != NULL) {
@@ -130,7 +153,7 @@ s32 Sock_RecvFrom(sptr a, void *b, s32 c, u32 d, SockAddrIn *sa) {
 }
 
 s32 Sock_Send(sptr a, const void *b, s32 c, u32 d) {
-    return SockCore_SendTo((SockCoreSocket *)a, b, c, 0, 0, d);
+    return SockCore_SendTo(Sock_Of(a), b, c, 0, 0, d);
 }
 
 s32 Sock_SendTo(sptr a, const void *b, s32 c, u32 d, SockAddrIn *sa) {
@@ -143,15 +166,19 @@ s32 Sock_SendTo(sptr a, const void *b, s32 c, u32 d, SockAddrIn *sa) {
         port = 0;
         ip = port;
     }
-    return SockCore_SendTo((SockCoreSocket *)a, b, c, port, ip, d);
+    return SockCore_SendTo(Sock_Of(a), b, c, port, ip, d);
 }
 
 s32 Sock_Shutdown(sptr a) {
-    return SockCore_Shutdown((SockCoreSocket *)a);
+    return SockCore_Shutdown(Sock_Of(a));
 }
 
 s32 Sock_Close(sptr a) {
-    return SockCore_Close((SockCoreSocket *)a);
+    s32 r = SockCore_Close(Sock_Of(a));
+    if (Sock_Of(a) != NULL) {
+        sSockHandles[a - 1] = NULL;
+    }
+    return r;
 }
 
 SockHostEnt *Sock_GetHostByName(const char *x) {
@@ -172,7 +199,8 @@ SockHostEnt *Sock_GetHostByName(const char *x) {
     return h;
 }
 
-s32 Sock_GetSockName(SockCoreSocket *o, SockAddrIn *sa) {
+s32 Sock_GetSockName(sptr h, SockAddrIn *sa) {
+    SockCoreSocket *o = Sock_Of(h);
     u32 ip;
     u32 port;
     if (o == NULL) {
@@ -203,13 +231,13 @@ s32 Sock_SetDnsServers(u32 *a, u32 *b) {
 }
 
 s32 Sock_Listen(sptr a) {
-    return SockCore_Listen((SockCoreSocket *)a);
+    return SockCore_Listen(Sock_Of(a));
 }
 
 sptr Sock_Accept(sptr a, SockAddrIn *sa) {
     u16 port;
     u32 addr;
-    sptr r = SockCore_Accept((SockCoreSocket *)a, &port, &addr);
+    sptr r = Sock_NewHandle(SockCore_Accept(Sock_Of(a), &port, &addr));
     if (r >= 0) {
         sa->port = HTONS(port);
         sa->addr = HTONL(addr);
@@ -217,7 +245,8 @@ sptr Sock_Accept(sptr a, SockAddrIn *sa) {
     return r;
 }
 
-s32 Sock_Fcntl(SockCoreSocket *o, s32 cmd, u32 flags) {
+s32 Sock_Fcntl(sptr h, s32 cmd, u32 flags) {
+    SockCoreSocket *o = Sock_Of(h);
     if (o == NULL) {
         return -1;
     }
@@ -278,6 +307,7 @@ s32 Sock_Startup(SockStartupConfig *s) {
     c->msgPoolSize = 0x40;
     c->mtu = s->mtu;
     c->recvWindow = s->recvWindow;
+    MI_CpuFill8(sSockHandles, 0, sizeof sSockHandles);
     return SockCore_Startup(c);
 }
 
@@ -332,7 +362,7 @@ s32 Sock_Poll(SockPollFd *arr, u32 n, s64 timeout) {
             do {
                 s32 ev = p->events;
                 ev |= 0xe0;
-                ev &= SockCore_GetPollEvents(p->sock);
+                ev &= SockCore_GetPollEvents(Sock_Of(p->sock));
                 if (ev != 0) {
                     cnt++;
                 }
@@ -1542,5 +1572,6 @@ HOST_OVERLAY_VARS(unk_ov065_0225fdf0) {
     HOST_OVERLAY_VAR(Unk_ov065_02260de4_Ns::sHostent),
     HOST_OVERLAY_VAR(Unk_ov065_02260de4_Ns::sSockStartupConfig),
     HOST_OVERLAY_VAR(Unk_ov065_02260de4_Ns::sHostentName),
+    HOST_OVERLAY_VAR(Unk_ov065_02260de4_Ns::sSockHandles),
     HOST_OVERLAY_VARS_END
 };

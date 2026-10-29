@@ -19,15 +19,15 @@ extern u32 GSINitroErrno;
 extern s32 randomnum;
 
 s32 sendto(s32, void *, s32, s32, void *, s32);
-SockHostEnt *Sock_GetHostByName(s32);
-s32 Sock_InetAtoN(s32, u32 *);
+SockHostEnt *Sock_GetHostByName(const char *);
+s32 Sock_InetAtoN(const char *, u32 *);
 s32 Sock_GetSockName(s32, void *);
 s32 CheckRcode(s32, s32);
 void qsort(void *, s32, s32, ArrayCompareFn);
 s32 OS_SPrintf(char *, char *, ...);  // (variadic, as defined)
 u64 func_02132ef8(u64, u64);
 
-s32 inet_addr(s32);
+s32 inet_addr(const char *);
 void MD5Print(u8 *, char *);
 void *ArrayNth(DArrayImplementation *, s32);
 s32 ArrayLength(DArrayImplementation *);
@@ -76,7 +76,7 @@ void *ArrayMapBackwards2(DArrayImplementation *v, GsArrayMapFn cb, void *arg);
 void ArrayClear(DArrayImplementation *v);
 u8 *mylsearch(void *key, u8 *base, s32 n, s32 size, ArrayCompareFn cmp);
 u8 *mybsearch(void *key, u8 *base, s32 n, s32 size, ArrayCompareFn cmp, s32 *found);
-s32 get_sockaddrin(s32 a, u32 port, SockAddrIn *out);
+s32 get_sockaddrin(const char *a, u32 port, SockAddrIn *out);  // (a host name: an s32 lost a 64-bit address's upper half)
 }
 
 extern "C" {
@@ -386,7 +386,7 @@ u8 *mybsearch(void *key, u8 *base, s32 n, s32 size, ArrayCompareFn cmp, s32 *fou
     return base + lo * size;
 }
 
-s32 get_sockaddrin(s32 a, u32 port, SockAddrIn *out) {
+s32 get_sockaddrin(const char *a, u32 port, SockAddrIn *out) {
     s32 p;
     out->family = 2;
     p = (u16)port;

@@ -11,6 +11,7 @@ extern "C" {
 enum {
     FEAT_CIRCLE_PAD,  // analog walking: the touch D-pad becomes a circle pad, a controller's left stick is analog
     FEAT_LOCAL_PLAY,  // DS-to-DS play (the gate) with other copies on the local network (wm7.c; iOS: found by Bonjour)
+    FEAT_WIIMMFI,     // Nintendo Wi-Fi Connection through Wiimmfi: an access point and its network (wm7.c, net_nat.c)
     FEAT_COUNT
 };
 
@@ -20,6 +21,8 @@ void feature_set(int f, int on);       // (saved at once)
 const char *feature_name(int f);       // capitals, for the settings screen
 // local play allowed: the switch where there is a settings file (a window); test runs without one: yes
 int host_local_play_on(void);
+// Wiimmfi: the switch (test runs without a settings file: ACWW_WIIMMFI=1)
+int host_wiimmfi_on(void);
 
 #ifdef __cplusplus
 }

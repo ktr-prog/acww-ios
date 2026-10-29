@@ -53,6 +53,7 @@ typedef int sock_t;
 #include "nitro/wm.h"
 #include "savestate.h"
 #include "host_features.h"
+#include "net_nat.h"
 #if HOST_IOS
 void ios_bonjour_start(unsigned port, const unsigned char mac[6]);  // ios/ios_glue.m: the other copies on the network
 #endif
@@ -193,6 +194,39 @@ static int sLan = 1;  // ACWW_NET_LAN=0: no beacons to the machine and the LAN (
 static int sPeerCount;
 HOST_STATE_KEEP(sPeerCount)
 static struct { struct sockaddr_in addr; u64 until; } sProbers[8];
+
+// ---- infrastructure mode: the access point of Nintendo Wi-Fi Connection through Wiimmfi (the settings' WIIMMFI;
+// net_nat.c is the network behind it). A scan finds it (besides any DS parent), StartConnect to it connects at once,
+// StartDCF / SetDCFData carry the DS's Ethernet frames, and the frames for the DS come as DCF indications (state 15),
+// each in a buffer of its own (the message's: free again with it).
+static int sInfra;     // connected to the access point
+static int sDcf;       // its DCF started
+static u64 sNextNat;
+static _Alignas(8) u8 sDcfFrames[64][0x620];  // (by the event message's index in sPool)
+static const char kApSsid[] = NAT_AP_SSID;
+static int wiimmfi(void) { return host_wiimmfi_on() && nat_supported(); }
+static void ap_desc(WMBssDesc *b) {
+    memset(b, 0, sizeof *b);
+    b->length = 0x40 / 2;
+    b->rssi = 0x3c;
+    memcpy(b->bssid, kNatGatewayMac, 6);
+    b->ssidLength = (u16)(sizeof kApSsid - 1);
+    memcpy(b->ssid, kApSsid, sizeof kApSsid - 1);
+    b->capaInfo = 0x0021;  // an access point (ESS), short preamble, no WEP
+    b->rateSet.basic = 3;
+    b->rateSet.support = 3;
+    b->beaconPeriod = 100;
+    b->dtimPeriod = 1;
+    b->channel = 1;
+}
+static void infra_leave(void) {
+    if (!sInfra) return;
+    sInfra = 0;
+    sDcf = 0;
+    if (sSt) sSt->f10 = 0, sSt->f184 = 0;
+    nat_stop();
+    LOG("left the access point\n");
+}
 
 enum { PK_BEACON = 1, PK_PROBE, PK_CONNECT, PK_ACCEPT, PK_REJECT, PK_DISCONNECT, PK_MP, PK_REPLY, PK_ALIVE };
 #define HDR 18  // "ACWL", version, type, source MAC, destination MAC
@@ -573,6 +607,12 @@ static void finish_scan(void) {
             memcpy(c->macAddress, found->mac, 6);
             c->channel = found->channel;
             c->linkLevel = 3;
+        } else if (wiimmfi()) {
+            ap_desc(buf);
+            c->state = SC_PARENT_FOUND;
+            memcpy(c->macAddress, kNatGatewayMac, 6);
+            c->channel = 1;
+            c->linkLevel = 3;
         }
         post(m, 0);
         return;
@@ -582,6 +622,13 @@ static void finish_scan(void) {
     m->id = API_START_SCAN_EX;
     WMStartScanExCallback *c = (WMStartScanExCallback *)m;
     u32 used = 0;
+    if (wiimmfi() && sizeof(WMBssDesc) <= sScanBufSize) {  // (the access point first)
+        WMBssDesc *b = (WMBssDesc *)buf;
+        ap_desc(b);
+        c->bssDesc[c->bssDescCount] = b;
+        c->linkLevel[c->bssDescCount++] = 3;
+        used += sizeof(WMBssDesc);
+    }
     for (int i = 0; i < 16; i++) {
         if (!sParents[i].on || used + sizeof(WMBssDesc) > sScanBufSize) continue;
         WMBssDesc *b = (WMBssDesc *)(buf + used);
@@ -631,6 +678,7 @@ static void finish_connect(int aid, u16 parentMax, u16 childMax) {
 
 // leaving whatever the radio does (Reset, End, EndParent)
 static void leave_all(void) {
+    infra_leave();
     if (sScanMsg) finish_scan();
     if (sConnectMsg) finish_connect(0, 0, 0);
     stop_mp();
@@ -885,6 +933,23 @@ void wm7_receive(void *request) {
         break;
     case API_START_CONNECT: {
         const WMBssDesc *b = HostPtr32_Get(((WMConnectReq *)m)->pInfo);
+        if (wiimmfi() && same_mac(b->bssid, kNatGatewayMac)) {  // the access point: connected at once (aid 1)
+            sInfra = 1;
+            sDcf = 0;
+            sMyAid = 1;
+            set_state(ST_CHILD);
+            if (sSt) sSt->f184 = 1, sSt->f10 = 0;
+            memset(m, 0, 0x100);
+            m->id = API_START_CONNECT;
+            WMStartConnectCallback *c = (WMStartConnectCallback *)m;
+            c->state = SC_CONNECTED;
+            c->aid = 1;
+            memcpy(c->macAddress, kNatGatewayMac, 6);
+            post(m, MS(20));
+            nat_start(sMac);
+            LOG("connected to the access point\n");
+            break;
+        }
         struct Parent *e = 0;
         for (int i = 0; i < 16 && !e; i++)
             if (sParents[i].on && same_mac(sParents[i].mac, b->bssid)) e = &sParents[i];
@@ -977,9 +1042,32 @@ void wm7_receive(void *request) {
         break;
     }
     case API_START_DCF:
-    case API_SET_DCF_DATA:
-    case API_END_DCF:  // (an access point: never found)
-        reply_cmd(m, id, ERR_FAILED, soon);
+        if (!sInfra) { reply_cmd(m, id, ERR_FAILED, soon); break; }
+        sDcf = 1;
+        set_state(ST_DCF_CHILD);
+        if (sSt) sSt->f10 = 1;
+        memset(m, 0, 0x100);
+        m->id = id;
+        ((u16 *)m)[2] = 14;  // (state: DCF started)
+        post(m, soon);
+        sNextNat = host_cycles();
+        break;
+    case API_SET_DCF_DATA: {
+        if (!sInfra || !sDcf) { reply_cmd(m, id, ERR_FAILED, soon); break; }
+        u8 dst[6];
+        memcpy(dst, (const u8 *)m + 4, 6);  // (the destination MAC: the request's first two words)
+        const u8 *data = HostPtr32_Get(P(m, 2));
+        u32 len = P(m, 3);
+        if (data && len) nat_from_ds(dst, data, len);
+        reply_cmd(m, id, 0, soon);
+        break;
+    }
+    case API_END_DCF:
+        if (!sInfra) { reply_cmd(m, id, ERR_FAILED, soon); break; }
+        sDcf = 0;
+        set_state(ST_CHILD);
+        if (sSt) sSt->f10 = 0;
+        reply_cmd(m, id, 0, soon);
         break;
     default:  // WEP keys, lifetime, beacon indications, ...: accepted
         reply_cmd(m, id, 0, soon);
@@ -992,6 +1080,7 @@ static u64 sNextPoll;
 u64 wm7_next_due(void) {
     u64 d = ~0ull;
     if (sOutCount) d = sOut[sOutHead].due;
+    if (sInfra && sNextNat < d) d = sNextNat;
     if (sSock == BAD_SOCK) return d;
     if (sNextPoll < d) d = sNextPoll;
     if (sScanMsg && sScanDue < d) d = sScanDue;
@@ -1016,8 +1105,8 @@ void wm7_run(u64 now) {
                 if (sChild[aid].on && real - sChild[aid].seen > LOST_NS)
                     drop_child(aid, 1, 1, "lost (nothing heard for 10 s)");
         }
-        if ((sState == ST_CHILD || sState == ST_MP_CHILD) && real - sJoined.seen > LOST_NS) child_lost(0);
-        if (sState == ST_CHILD || sState == ST_MP_CHILD) {
+        if (!sInfra && (sState == ST_CHILD || sState == ST_MP_CHILD) && real - sJoined.seen > LOST_NS) child_lost(0);
+        if (!sInfra && (sState == ST_CHILD || sState == ST_MP_CHILD)) {
             if (now >= sNextAlive) {
                 sNextAlive = now + MS(1000);
                 u8 *p = packet(PK_ALIVE, sJoined.mac);
@@ -1045,6 +1134,31 @@ void wm7_run(u64 now) {
         }
     }
     if (sScanMsg && now >= sScanDue) finish_scan();
+    if (sInfra && now >= sNextNat) {  // the access point's network, and its frames for the DS
+        sNextNat = now + MS(2);
+        nat_poll();
+        u8 frame[0x620];
+        u32 len;
+        for (int k = 0; sDcf && k < 16; k++) {
+            int i = 0;
+            for (; i < POOL; i++)  // (a free message: its frame buffer is free too)
+                if (!sPoolUsed[i] || (((WMMsg *)sPool[i])->id & 0x8000)) break;
+            if (i == POOL || !nat_take(frame, sizeof frame - 0x2c, &len)) break;
+            WMMsg *e = event(API_START_DCF, 0);
+            if (!e) break;
+            u8 *f = sDcfFrames[((u8 *)e - sPool[0]) / 0x100];
+            memset(f, 0, 0x2c);
+            put16(f + 6, len);                // the data's length (from the LLC header on)
+            put16(f + 0xe, 0x2800);           // (the signal: its high byte)
+            memcpy(f + 0x18, sMac, 6);         // to the DS
+            memcpy(f + 0x1e, kNatGatewayMac, 6);  // from the access point (the gateway)
+            memcpy(f + 0x2c, frame, len);
+            ((u16 *)e)[2] = 15;               // (state: DCF data indication)
+            void *fp = f;
+            memcpy((u8 *)e + 8, &fp, sizeof fp);  // (the frame's address: WifiLink reads a pointer there)
+            post(e, 0);
+        }
+    }
     if (sState == ST_PARENT || sState == ST_MP_PARENT) {
         if (now >= sNextBeacon) {
             u64 period = MS(sParam.beaconPeriod ? sParam.beaconPeriod : 200);

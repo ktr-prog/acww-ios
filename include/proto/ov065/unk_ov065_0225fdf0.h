@@ -160,10 +160,10 @@ extern SockCoreConfig sSockStartupConfig;
 SockHostEnt *Sock_GetHostByName(const char *x);
 #endif
 #ifndef PROTO_LOCAL_Sock_GetSockName
-s32 Sock_GetSockName(SockCoreSocket *o, SockAddrIn *sa);
+s32 Sock_GetSockName(sptr h, SockAddrIn *sa);
 #endif
 #ifndef PROTO_LOCAL_Sock_Fcntl
-s32 Sock_Fcntl(SockCoreSocket *o, s32 cmd, u32 flags);
+s32 Sock_Fcntl(sptr h, s32 cmd, u32 flags);
 #endif
 #ifndef PROTO_LOCAL_SockCore_AddToOpenList
 void SockCore_AddToOpenList(SockCoreSocket *n);

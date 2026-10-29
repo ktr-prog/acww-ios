@@ -1233,7 +1233,7 @@ void DwcLogin_PollNasAuth(void) {
             DwcLogin_Fail(2, s2.result);
         } else {
             NasAuth_Destroy();
-            MI_CpuFill8(&cfg, 0, 0x2c);
+            MI_CpuFill8(&cfg, 0, sizeof cfg);  // (0x2c on the DS)
             STD_CopyString(cfg.gsbrcd, sDwcLoginControl->gsbrcd);
             cfg.allocFunc = (DwcAllocFunc)DwcNet_Alloc;
             cfg.freeFunc = (DwcFreeFunc)DwcNet_Free;

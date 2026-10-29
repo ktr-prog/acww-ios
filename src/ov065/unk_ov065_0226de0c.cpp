@@ -197,7 +197,7 @@ void DwcHttp_ThreadMain(DwcHttp *c) {
     if (timeout <= 0) {
         timeout = 0xea60;
     }
-    MI_CpuFill8(conn, 0, 0x64);
+    MI_CpuFill8(conn, 0, sizeof *conn);  // (0x64 on the DS)
     conn->rxBufSize = 0xb68;
     conn->rxBuf = (u8 *)c->lowRecvBuf;
     conn->txBufSize = 0x5ea;
@@ -219,7 +219,7 @@ void DwcHttp_ThreadMain(DwcHttp *c) {
     IpSoc_Init();
     u32 port;
     if (c->isHttps == 1) {
-        MI_CpuFill8(ssl, 0, 0x804);
+        MI_CpuFill8(ssl, 0, sizeof *ssl);  // (0x804 on the DS)
         ssl->certVerifyCallback = DwcHttp_CertCallback;
         ssl->hostName = c->hostName;
         conn->sslCtx = ssl;
@@ -526,7 +526,7 @@ void DwcHttp_FreeBuffer(DwcHttp *c, DwcHttpBuffer *b) {
     if (b->base != NULL) {
         c->freeFunc("DWCHttpBuffer", b->base, 0);
     }
-    MI_CpuFill8(b, 0, 0x10);
+    MI_CpuFill8(b, 0, sizeof *b);  // (0x10 on the DS)
 }
 
 s32 DwcHttp_GrowBuffer(DwcHttp *c, DwcHttpBuffer *b, s32 n) {

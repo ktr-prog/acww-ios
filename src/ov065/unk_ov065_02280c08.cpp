@@ -616,7 +616,7 @@ GPIPeer *gpiAddPeer(GPConnection *h, s32 a, s32 b) {
     if (n == NULL) {
         return NULL;
     }
-    memset(n, 0, 0x40);
+    memset(n, 0, sizeof *n);  // (0x40 on the DS)
     n->state = 0x64;
     n->initiated = b;
     n->sock = -1;

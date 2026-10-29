@@ -120,16 +120,10 @@ struct WlxWmWork {
     u8 pad_510c[0x14];
     WMBssDesc bssDesc;     // the parent found by the scan (WM_StartConnectEx)
     u8 scanBuffer[0x400];  // WM_StartScanEx result buffer
-    // WM_StartScanEx parameter (WMScanExParam as the WM layer reads it: the buffer address in 32 bits)
-    u32 scanBuf;
-    u16 scanBufSize;
-    u16 scanChannelList;
-    u16 scanMaxChannelTime;
-    u8 scanBssid[6];
-    u16 scanType;
-    u16 scanSsidLength;
-    u8 scanSsid[0x20];
-    u8 pad_5614[0x5640 - 0x5614];
+    // WM_StartScanEx's parameter (the DS kept its fields here, the buffer's address in 32 bits; WM_StartScanEx takes a
+    // WMScanExParam, whose buffer is a pointer on 64-bit hosts)
+    WMScanExParam scanParam;
+    u8 pad_5614[0x5640 - 0x5614 - (sizeof(WMScanExParam) - 0x34)];
 };
 
 
@@ -1337,15 +1331,15 @@ extern "C" void WlxWm_ScanStep(WlxWmMsg *m) {
     if (m == NULL) {
         c->state = 1;
         c->numBeacons = 0;
-        c->scanBuf = (u32)(uptr)c->scanBuffer;
-        c->scanBufSize = 0x400;
-        c->scanChannelList = WM_GetAllowedChannel();
-        c->scanMaxChannelTime = 0x6e;
-        MI_CpuFill8(c->scanBssid, 0xff, 6);
-        c->scanType = 1;
-        c->scanSsidLength = 0;
-        MI_CpuFill8(c->scanSsid, 0xff, 0x20);
-        WlxWm_CheckApiCall(c, 0x26, WM_StartScanEx(WlxWm_ScanStep, &c->scanBuf));
+        c->scanParam.scanBuf = (WMBssDesc *)c->scanBuffer;
+        c->scanParam.scanBufSize = 0x400;
+        c->scanParam.channelList = WM_GetAllowedChannel();
+        c->scanParam.maxChannelTime = 0x6e;
+        MI_CpuFill8(c->scanParam.bssid, 0xff, 6);
+        c->scanParam.scanType = 1;
+        c->scanParam.ssidLength = 0;
+        MI_CpuFill8(c->scanParam.ssid, 0xff, 0x20);
+        WlxWm_CheckApiCall(c, 0x26, WM_StartScanEx(WlxWm_ScanStep, &c->scanParam));
         return;
     }
     if (m->apiid == 0x26) {
@@ -1401,7 +1395,7 @@ extern "C" void WlxWm_Init(WlxWmWork *c, WMParentParam *s, WlxWmEventFn cb, u32 
     OS_RestoreInterrupts(r);
     sWlxWm = c;
     volatile u32 z = 0;
-    MIi_CpuClear32(z, c, 0x5640);
+    MIi_CpuClear32(z, c, sizeof *c);  // (0x5640 on the DS)
     c->aid = 0;
     c->isSending = 1;
     c->eventCallback = cb;

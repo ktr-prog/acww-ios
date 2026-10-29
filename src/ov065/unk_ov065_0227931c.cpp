@@ -443,7 +443,7 @@ GHIConnection *ghiNewConnection() {
         return 0;
     }
     s = ghiConnections[idx];
-    memset(s, 0, 0x184);
+    memset(s, 0, sizeof *s);  // (0x184 on the DS)
     s->inUse = 1;
     s->request = idx;
     s->uniqueID = ghiNextUniqueID++;
@@ -946,7 +946,7 @@ void ghiFreeBuffer(GHIBuffer *o) {
         if (o->dontFree == 0) {
             GsUtil_Free(o->data);
         }
-        memset(o, 0, 0x24);
+        memset(o, 0, sizeof *o);  // (0x24 on the DS)
     }
 }
 }

@@ -551,7 +551,7 @@ def main():
             # themselves after it
             outside = {"frontend_sdl.o", "frontend_ui.o", "frontend_viewer.o", "frontend_none.o", "plat_posix.o",
                        "plat_win32.o", "plat_common.o", "debug_posix.o", "guards.o", "early.o", "coro.o",
-                       "coro_switch.o", "ptr32.o", "savestate.o", "features.o", "melon.o", "melon_platform.o",
+                       "coro_switch.o", "ptr32.o", "savestate.o", "features.o", "net_nat.o", "melon.o", "melon_platform.o",
                        "melon_none.o"}
             out = [o for o in host_objs if "/modern/host/ios/" in o or
                    ("/modern/host/" in o and Path(o).name in outside)]
