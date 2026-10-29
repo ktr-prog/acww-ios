@@ -289,6 +289,7 @@ AcwwShm *frontend_backend_open(const char *argv0) {
     }
     open_audio();
     atexit(sdl_quit);
+    if (getenv("ACWW_BUILD_LABEL")) ui_toast(getenv("ACWW_BUILD_LABEL"));  // (iOS: which build is running)
     return sShm;
 }
 

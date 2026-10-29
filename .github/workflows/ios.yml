@@ -82,7 +82,7 @@ jobs:
       - name: Package
         run: |
           python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa \
-            --version "1.0" --build "${{ github.run_number }}" --sign-adhoc
+            --version "1.0" --build "${{ github.run_number }}" --commit "${GITHUB_SHA::7}" --sign-adhoc
           unzip -l build/ios/ACWW.ipa
           codesign --verify --verbose build/ios/Payload/ACWW.app
           plutil -lint build/ios/Payload/ACWW.app/Info.plist

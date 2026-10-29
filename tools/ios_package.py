@@ -37,7 +37,7 @@ ICONS = [
 ]
 
 
-def info_plist(version: str, build: str) -> dict:
+def info_plist(version: str, build: str, commit: str = "") -> dict:
     orient = ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationLandscapeLeft",
               "UIInterfaceOrientationLandscapeRight"]
     return {
@@ -50,6 +50,7 @@ def info_plist(version: str, build: str) -> dict:
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": version,
         "CFBundleVersion": build,
+        "ACWWCommit": commit,  # (shown with the build number on the settings screen and at start-up)
         "CFBundleSupportedPlatforms": ["iPhoneOS"],
         "CFBundleIcons": {"CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60"]}},
         "CFBundleIcons~ipad": {"CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60", "AppIcon76x76",
@@ -194,6 +195,7 @@ def main():
     p.add_argument("ipa", help="the .ipa to write")
     p.add_argument("--version", default="1.0", help="CFBundleShortVersionString")
     p.add_argument("--build", default="1", help="CFBundleVersion")
+    p.add_argument("--commit", default="", help="the source's commit (shown in the app with the build number)")
     p.add_argument("--sign-adhoc", action="store_true", help="an ad-hoc signature (codesign, macOS only)")
     p.add_argument("--icon", default="ios/icon.png",
                    help="a picture for the app's icon (any size; cropped to a square in its middle), if the file is "
@@ -217,7 +219,7 @@ def main():
     shutil.copyfile(binary, app / EXECUTABLE)
     os.chmod(app / EXECUTABLE, 0o755)
     with open(app / "Info.plist", "wb") as f:
-        plistlib.dump(info_plist(args.version, args.build), f, fmt=plistlib.FMT_XML)
+        plistlib.dump(info_plist(args.version, args.build, args.commit), f, fmt=plistlib.FMT_XML)
     (app / "PkgInfo").write_bytes(b"APPL????")
     # (tools/ios_check.py found the save states' ranges wrong: the app turns them off)
     off = binary.parent / "savestates-off"

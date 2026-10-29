@@ -117,6 +117,12 @@ static void open_log(NSString *docs) {
     fprintf(stderr, "ios: ACWW %s (build %s), %s, iOS %s, %s\n",
             [info[@"CFBundleShortVersionString"] UTF8String] ?: "?", [info[@"CFBundleVersion"] UTF8String] ?: "?",
             model, [UIDevice currentDevice].systemVersion.UTF8String, when);
+    // (the build, on the settings screen and at start-up: frontend_ui.c)
+    char label[64];
+    snprintf(label, sizeof label, "BUILD %s %s", [info[@"CFBundleVersion"] UTF8String] ?: "?",
+             [info[@"ACWWCommit"] UTF8String] ?: "");
+    setenv("ACWW_BUILD_LABEL", label, 1);
+    fprintf(stderr, "ios: %s\n", label);
 }
 
 // acww-options.txt in the app's folder: the runtime's options (docs/host.md, README.md), a NAME=value per line,

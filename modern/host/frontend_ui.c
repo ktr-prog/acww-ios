@@ -190,6 +190,8 @@ static void draw_settings(void) {
             text2(10, y, "CLOSE", kText);
         }
     }
+    const char *build = getenv("ACWW_BUILD_LABEL");  // (iOS: the app's build number and commit, ios_glue.m)
+    if (build) text(8, H - 14, build, kDim, 0);
 }
 
 // a short message over the bottom of the top screen for a few seconds (the game goes on)
