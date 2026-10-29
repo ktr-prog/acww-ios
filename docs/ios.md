@@ -21,9 +21,9 @@ Notes:
   Actions minutes at ten times the rate of Linux minutes.
 - No game data is used for the build, and none is ever needed on GitHub. Don't upload your game there.
 
-**Your own icon (optional):** add a picture as `ios/icon.png` to your repository (any size; the middle square of it
-is used) and the next build uses it as the app's icon. Without it the app has a plain icon drawn by the build. Only
-add pictures you have the right to use, especially if the repository is public.
+**The icon** is `ios/icon.png` (a peach on a polka-dot background, drawn by `tools/icon/draw_icon.py`). Replace it with
+a picture of your own (any size; the middle square of it is used) and the next build uses that. Only add pictures you
+have the right to use, especially if the repository is public.
 
 ## 2. Install it on the device
 
