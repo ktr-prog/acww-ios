@@ -88,6 +88,8 @@ static int ranges_fine(void) {
     const char *hi[3] = {gHostStateDataEnd, gHostStateBssEnd, host_state_static_bss_end()};
     const char *gend[3] = {gHostGameDataEnd, gHostGameBssEnd, host_game_static_bss_end()};
     const char *why = 0;
+    const char *env = getenv("ACWW_SAVESTATES");
+    if (env && atoi(env) == 0) why = "ACWW_SAVESTATES=0 (on iOS: the build's check found the ranges wrong)";
     for (int i = 0; i < 3 && !why; i++) {
         if (!(lo[i] < hi[i])) why = "a range is the wrong way round";
         else if (!in(gend[i], lo[i], hi[i])) why = "the game's variables aren't inside";

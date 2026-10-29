@@ -192,7 +192,12 @@ static int ios_main(int argc, char *argv[]) {
     @autoreleasepool {
         NSString *docs = documents();
         open_log(docs);
+        // (the app's folder is the working directory: an option's relative path, ACWW_WAV=sound.wav, lands there)
+        chdir(docs.fileSystemRepresentation);
         read_options(docs);
+        // (the build's check found the save states' memory ranges wrong: tools/ios_check.py)
+        NSString *off = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"savestates-off"];
+        if ([NSFileManager.defaultManager fileExistsAtPath:off]) setenv("ACWW_SAVESTATES", "0", 1);
         rom = find_rom(docs);
     }
     static char path[4096];

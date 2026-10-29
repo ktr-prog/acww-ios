@@ -359,7 +359,7 @@ extern "C" PmNew *SPL_Init(void *(*alloc)(u32), s32 n1, s32 n2, u32 a3, u16 a4, 
     m->b6 = a5;
     m->b12 = m->b0;
     m->b18 = a3;
-    *((u8 *)m + 0x2f) = 0;
+    m->pad24 = 0;  // (DS offset 0x2f: the top byte of the bitfield word; the 64-bit layout has it elsewhere)
     m->alloc = alloc;
     m->w8 = 0;
     m->w16 = 0;

@@ -2284,7 +2284,8 @@ void SpNpcNookShopTalk::onMessageEnd(u32) {
         return;
     }
     if (ownerNpc->isNook()) {
-        if (strncmp((char *)this + 4, sSpNpcNookShopKey, strlen(sSpNpcNookShopKey)) != 0) {
+        // (the request's message file, MsgRequest::fileName: DS offset 4, after the vtable pointer - 8 on 64-bit hosts)
+        if (strncmp(fileName, sSpNpcNookShopKey, strlen(sSpNpcNookShopKey)) != 0) {
             return;
         }
     }

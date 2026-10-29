@@ -176,6 +176,11 @@ def main():
     with open(app / "Info.plist", "wb") as f:
         plistlib.dump(info_plist(args.version, args.build), f, fmt=plistlib.FMT_XML)
     (app / "PkgInfo").write_bytes(b"APPL????")
+    # (tools/ios_check.py found the save states' ranges wrong: the app turns them off)
+    off = binary.parent / "savestates-off"
+    if off.is_file():
+        shutil.copyfile(off, app / "savestates-off")
+        print(f"ios_package.py: save states off: {off.read_text().strip()}")
     for name, n in ICONS:
         if not custom_icon(args.icon, app / name, n):
             (app / name).write_bytes(draw_icon(n))

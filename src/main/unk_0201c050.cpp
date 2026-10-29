@@ -11051,7 +11051,9 @@ void VillagerTalk::onMessageStart(u32 a) {
 }
 
 void VillagerTalk::onMessageEnd(u32 a) {
-    volatile u8 v = *((u8 *)((void *)window) + 0x19f7);
+    // (the window's next message index, TalkWindowState::nextMsgIndex: DS offset 0x19f7, which is elsewhere in the
+    // larger 64-bit window - read there, the end of a conversation was never seen and it never ended)
+    volatile u8 v = window->nextMsgIndex;
     if (runMsgAttrHandler(a) == 0) {
         if (unk_156 != 0) {
             Snd_PlaySe(unk_156);

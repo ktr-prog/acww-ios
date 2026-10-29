@@ -10,7 +10,8 @@
 - the save states' ranges (modern/host/savestate.c), from the link map next to the program (acww.map, which
   configure_host.py has the linker write) and objects.txt: in each writable section, the variables of the objects
   from modern/link/game_begin.o to state_end.o (the game and the runtime's DS) lie between the section's two markers,
-  and nobody else's (the frontend's, SDL's, the C library's) do.
+  and nobody else's (the frontend's, SDL's, the C library's) do. If not, a warning, and the file savestates-off next
+  to the program: tools/ios_package.py puts it in the app, which then has no save states.
 Exit status 0 if all is well. Standard library only.
 """
 import os
@@ -28,8 +29,20 @@ LC_MAIN = 0x80000028
 PLATFORM_IOS = 2
 
 
+GITHUB = os.environ.get("GITHUB_ACTIONS") == "true"
+
+
+def note(msg):
+    """a detail of a failure (on GitHub Actions also an annotation of the run: readable without the log)"""
+    print(f"ios_check.py:   {msg}")
+    if GITHUB:
+        print(f"::warning title=ios_check detail::{msg}")
+
+
 def fail(msg):
     print(f"ios_check.py: FAIL: {msg}")
+    if GITHUB:
+        print(f"::error title=ios_check::{msg}")
     sys.exit(1)
 
 
@@ -106,9 +119,29 @@ def main():
         fail(f"the first initialiser ({where}) is at {first:#x}, not early_init ({early:#x}): the DS memory would be "
              "mapped after the game's static constructors run")
     print(f"ios_check.py: early_init ({early:#x}) is the first initialiser ({where})")
-    check_state(os.path.join(os.path.dirname(sys.argv[1]), "acww.map"),
-                os.path.join(os.path.dirname(sys.argv[1]), "objects.txt"))
+    # (the save states only: a wrong range turns them off in this build - a file the packaging puts in the app,
+    # modern/host/ios/ios_glue.m - instead of stopping it)
+    out = os.path.dirname(sys.argv[1])
+    off = os.path.join(out, "savestates-off")
+    if os.path.exists(off):
+        os.remove(off)
+    try:
+        check_state(os.path.join(out, "acww.map"), os.path.join(out, "objects.txt"))
+    except StateProblem as e:
+        print(f"ios_check.py: WARNING: save states off in this build: {e}")
+        if GITHUB:
+            print(f"::warning title=ios_check::save states off in this build: {e}")
+        with open(off, "w") as f:
+            f.write(f"{e}\n")
     print("ios_check.py: all good")
+
+
+class StateProblem(Exception):
+    pass
+
+
+def state_fail(msg):
+    raise StateProblem(msg)
 
 
 # the save states' markers: the first and the last variable of the state in the section each lands in
@@ -118,13 +151,14 @@ STATE_MARKERS = [("_gHostGameDataBegin", "_gHostStateDataEnd"), ("_gHostGameBssB
 
 def check_state(map_path, objects_path):
     if not os.path.exists(map_path) or not os.path.exists(objects_path):
-        fail(f"no link map ({map_path}) or object list ({objects_path}): the save states' ranges can't be checked")
+        state_fail(f"no link map ({map_path}) or object list ({objects_path}): the save states' ranges can't be checked")
     objs = [l.strip() for l in open(objects_path) if l.strip()]
     first = [i for i, o in enumerate(objs) if o.endswith("modern/link/game_begin.o")]
     last = [i for i, o in enumerate(objs) if o.endswith("modern/link/state_end.o")]
     if not first or not last or first[0] > last[0]:
-        fail("objects.txt: no game_begin.o ... state_end.o run")
-    state_objs = {os.path.normpath(o) for o in objs[first[0]:last[0] + 1]}
+        state_fail("objects.txt: no game_begin.o ... state_end.o run")
+    # (paths compared resolved: the map may give them absolute, objects.txt gives them from the repository's root)
+    state_objs = {os.path.realpath(o) for o in objs[first[0]:last[0] + 1]}
     files, sects, syms, mode = {}, [], [], None
     for line in open(map_path, errors="replace"):
         line = line.rstrip("\n")
@@ -141,7 +175,7 @@ def check_state(map_path, objects_path):
         elif mode == "obj":
             m = re.match(r"\[\s*(\d+)\]\s+(.*)$", line)
             if m:
-                files[int(m.group(1))] = os.path.normpath(m.group(2))
+                files[int(m.group(1))] = os.path.realpath(m.group(2))
         elif mode == "sec":
             p = line.split()
             if len(p) >= 4:
@@ -151,7 +185,11 @@ def check_state(map_path, objects_path):
             if m:
                 syms.append((int(m.group(1), 16), int(m.group(2), 16), int(m.group(3)), m.group(4)))
     if not files or not sects or not syms:
-        fail(f"{map_path}: not a link map in the expected format")
+        with open(map_path, errors="replace") as m:
+            head = [next(m, "").rstrip() for _ in range(12)]
+        note(" | ".join(head))
+        state_fail(f"{map_path}: not a link map in the expected format ({len(files)} objects, {len(sects)} sections, "
+             f"{len(syms)} symbols)")
 
     def section_of(a):
         for addr, size, seg, sect in sects:
@@ -163,17 +201,17 @@ def check_state(map_path, objects_path):
     ranges = {}  # section -> (lo, hi)
     for lo_name, hi_name in STATE_MARKERS:
         if lo_name not in by_name or hi_name not in by_name:
-            fail(f"{map_path}: no {lo_name} / {hi_name}")
+            state_fail(f"{map_path}: no {lo_name} / {hi_name}")
         lo, hi = by_name[lo_name], by_name[hi_name]
         sl, sh = section_of(lo), section_of(hi)
         if sl != sh or not sl:
-            fail(f"{lo_name} ({sl}) and {hi_name} ({sh}) aren't in one section")
+            state_fail(f"{lo_name} ({sl}) and {hi_name} ({sh}) aren't in one section")
         if not lo < hi:
-            fail(f"{lo_name} {lo:#x} isn't below {hi_name} {hi:#x}")
+            state_fail(f"{lo_name} {lo:#x} isn't below {hi_name} {hi:#x}")
         if sl in ranges:  # (two pairs in one section: the union, if they meet)
             plo, phi = ranges[sl]
             if hi < plo or lo > phi:
-                fail(f"two separate state ranges in {sl}")
+                state_fail(f"two separate state ranges in {sl}")
             lo, hi = min(lo, plo), max(hi, phi)
         ranges[sl] = (lo, hi)
     bad, counts = [], {}
@@ -196,8 +234,8 @@ def check_state(map_path, objects_path):
             bad.append(f"{name} ({files.get(idx)}) at {a:#x}, inside the state range of {sec[1]} ({lo:#x}-{hi:#x})")
     if bad:
         for b in bad[:30]:
-            print(f"ios_check.py:   {b}")
-        fail(f"{len(bad)} variables on the wrong side of the save states' ranges")
+            note(b)
+        state_fail(f"{len(bad)} variables on the wrong side of the save states' ranges")
     for sec, (lo, hi) in sorted(ranges.items(), key=lambda kv: kv[1]):
         print(f"ios_check.py: save state range {sec[0]},{sec[1]} {lo:#x}-{hi:#x} ({(hi - lo) >> 10} KB, "
               f"{counts.get(sec, 0)} variables): only the game's and the runtime's DS's")

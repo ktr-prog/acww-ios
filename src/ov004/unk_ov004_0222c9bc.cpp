@@ -3754,7 +3754,7 @@ extern "C" void MuseumAquarium_FishStateActive(Mgr *o, R **p, s32 x) {
     AquariumFish_ResetContacts(*p);
     MuseumAquarium_ConfineFish(o, p, x);
     MuseumAquarium_CalcFishMtx(o, p);
-    ((BlendAnimModel *)((u8 *)(*p) + 0x64))->stepBlend();
+    (*p)->model.stepBlend();  // (DS offset 0x64: the member by name, elsewhere on 64-bit hosts)
 }
 
 s32 MuseumAquarium::onExecute() {
@@ -3859,7 +3859,7 @@ s32 MuseumAquarium::onDraw() {
                     break;
                 case 0x24:
                     if (sAquariumJellyfish) {
-                        VecFx32 *q = (VecFx32 *)((u8 *)sAquariumJellyfish + 0x258);
+                        VecFx32 *q = (VecFx32 *)&sAquariumJellyfish->scaleX;  // (DS offset 0x258: scaleX..scaleZ)
                         v.x = q->x;
                         v.y = q->y;
                         v.z = q->z;
@@ -3875,7 +3875,7 @@ s32 MuseumAquarium::onDraw() {
                     v.z = 0x1000;
                     break;
                 }
-                ((AnimModel *)((u8 *)(*p) + 0x64))->drawAnimated((void *)(void *)(&v));
+                ((AnimModel *)&(*p)->model)->drawAnimated((void *)(void *)(&v));  // (DS offset 0x64)
             }
         }
     }
@@ -3959,7 +3959,7 @@ extern "C" void MuseumAquarium_PlaceSeaFish(Mgr *self) {
         }
         v = w;
         if (((MuseumData *)(data_021ed0a0))->isDonated((u16 *)&v)) {
-            s32 *e = (s32 *)((u8 *)*pp + 0x1a8);
+            s32 *e = (s32 *)&(*pp)->pos;  // (DS offset 0x1a8)
             switch (i) {
             case 0x34:
             case 0x35:
@@ -3989,11 +3989,11 @@ extern "C" void MuseumAquarium_PlaceSeaFish(Mgr *self) {
                 break;
             }
             e[1] = ((sAquariumFishParams[i].baseY << 12) >> 6) - 0x1000;
-            s32 *d = (s32 *)((u8 *)*pp + 0x1b4);
+            s32 *d = (s32 *)&(*pp)->prevPos;  // (DS offset 0x1b4)
             d[0] = e[0];
             d[1] = e[1];
             d[2] = e[2];
-            *((u8 *)*pp + 0x164) = sAquariumFishParams[i].rank;
+            (*pp)->rank = sAquariumFishParams[i].rank;  // (DS offset 0x164)
             MuseumAquarium_RequestFishModel(self, i);
         }
     }

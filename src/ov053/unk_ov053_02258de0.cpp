@@ -283,11 +283,11 @@ void SpNpcHarriet::changeAct(s32 state) {
 }
 
 u8 SpNpcHarrietTalk::getNewHairStyle() {
-    return ((u8 *)this)[0xb6];
+    return newHairStyle;  // (DS offset 0xb6: elsewhere in the 64-bit object)
 }
 
 u8 SpNpcHarrietTalk::getNewHairColor() {
-    return ((u8 *)this)[0xb7];
+    return newHairColor;  // (DS offset 0xb7)
 }
 
 BOOL SpNpcHarriet::setupAct00() {
