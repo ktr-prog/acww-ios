@@ -51,6 +51,9 @@ def info_plist(version: str, build: str, commit: str = "") -> dict:
         "CFBundleShortVersionString": version,
         "CFBundleVersion": build,
         "ACWWCommit": commit,  # (shown with the build number on the settings screen and at start-up)
+        # (local play, when switched on in the settings: the other copies on the network, found with Bonjour)
+        "NSLocalNetworkUsageDescription": "Local play finds the other copies of the game on your Wi-Fi network.",
+        "NSBonjourServices": ["_acww._udp"],
         "CFBundleSupportedPlatforms": ["iPhoneOS"],
         "CFBundleIcons": {"CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60"]}},
         "CFBundleIcons~ipad": {"CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60", "AppIcon76x76",

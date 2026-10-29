@@ -90,8 +90,9 @@ away) and open it again after changing it.
 
 - **The picture** is drawn by the CPU renderers at the DS's resolution, then scaled up sharply. There is no
   higher-resolution 3D (the PC's WebGPU renderer) on iOS yet.
-- **No DS-to-DS play** (local wireless, the gate): the iOS version doesn't use the local network at all. Online play
-  is to go through Wiimmfi (not there yet).
+- **Local play** (DS-to-DS, the gate) is a switch in the settings (MENU), off at first. On, the copies of the game on the
+  same Wi-Fi network find each other with Bonjour (iOS asks once for the local network). Online play (Nintendo Wi-Fi
+  Connection) is to go through Wiimmfi, a switch of its own (not there yet).
 - **The game's own reset** (after a broken wireless connection) closes the app with a message. Open it again.
 - There are no environment variables on iOS, so the PC's options (README.md, docs/host.md) keep their defaults.
 

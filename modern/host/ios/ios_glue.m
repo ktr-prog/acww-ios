@@ -16,6 +16,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <time.h>
 #include <unistd.h>
@@ -190,6 +193,61 @@ static NSString *find_rom(NSString *docs) {
         static const char *const kButtons[] = {"Check again", "Try it anyway"};
         if (ask(SDL_MESSAGEBOX_WARNING, "Unsupported game file", text.UTF8String, kButtons, 2) == 1) return roms[0];
     }
+}
+
+// ---- local play (the settings' LOCAL PLAY, wm7.c): the copies on the local network find each other with Bonjour
+// (_acww._udp, Info.plist's NSBonjourServices), as an app without Apple's multicast permission can't broadcast. Each
+// copy publishes its UDP port; every other one found is resolved and handed to wm7 as a peer. Runs on the main
+// thread's run loop, which SDL turns between frames (the game is held then).
+void wm7_add_peer(unsigned ipv4_be, unsigned short port);
+
+@interface AcwwBonjour : NSObject <NSNetServiceDelegate, NSNetServiceBrowserDelegate>
+@property(strong) NSNetService *published;
+@property(strong) NSNetServiceBrowser *browser;
+@property(strong) NSMutableArray<NSNetService *> *resolving;
+@property(copy) NSString *ownName;
+@end
+
+@implementation AcwwBonjour
+- (void)netServiceBrowser:(NSNetServiceBrowser *)browser didFindService:(NSNetService *)service moreComing:(BOOL)more {
+    if ([service.name isEqualToString:self.ownName]) return;
+    [self.resolving addObject:service];
+    service.delegate = self;
+    [service resolveWithTimeout:10];
+}
+- (void)netServiceDidResolveAddress:(NSNetService *)service {
+    for (NSData *d in service.addresses) {
+        const struct sockaddr *sa = d.bytes;
+        if (d.length >= sizeof(struct sockaddr_in) && sa->sa_family == AF_INET) {
+            const struct sockaddr_in *in = (const struct sockaddr_in *)sa;
+            wm7_add_peer(in->sin_addr.s_addr, (unsigned short)service.port);
+        }
+    }
+    [self.resolving removeObject:service];
+}
+- (void)netService:(NSNetService *)service didNotResolve:(NSDictionary<NSString *, NSNumber *> *)errors {
+    [self.resolving removeObject:service];
+}
+- (void)netService:(NSNetService *)service didNotPublish:(NSDictionary<NSString *, NSNumber *> *)errors {
+    fprintf(stderr, "ios: local play: not published on the network (%s)\n", errors.description.UTF8String);
+}
+@end
+
+static AcwwBonjour *sBonjour;
+void ios_bonjour_start(unsigned port, const unsigned char mac[6]) {
+    if (sBonjour) return;
+    sBonjour = [AcwwBonjour new];
+    sBonjour.resolving = [NSMutableArray array];
+    sBonjour.ownName = [NSString stringWithFormat:@"ACWW %02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3],
+                                                  mac[4], mac[5]];
+    sBonjour.published = [[NSNetService alloc] initWithDomain:@"local." type:@"_acww._udp." name:sBonjour.ownName
+                                                         port:(int)port];
+    sBonjour.published.delegate = sBonjour;
+    [sBonjour.published publish];
+    sBonjour.browser = [NSNetServiceBrowser new];
+    sBonjour.browser.delegate = sBonjour;
+    [sBonjour.browser searchForServicesOfType:@"_acww._udp." inDomain:@"local."];
+    fprintf(stderr, "ios: local play: looking for other copies on the network (UDP port %u)\n", port);
 }
 
 static int ios_main(int argc, char *argv[]) {

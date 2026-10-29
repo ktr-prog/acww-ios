@@ -10,6 +10,7 @@ extern "C" {
 
 enum {
     FEAT_CIRCLE_PAD,  // analog walking: the touch D-pad becomes a circle pad, a controller's left stick is analog
+    FEAT_LOCAL_PLAY,  // DS-to-DS play (the gate) with other copies on the local network (wm7.c; iOS: found by Bonjour)
     FEAT_COUNT
 };
 
@@ -17,6 +18,8 @@ void features_init(const char *path);  // the file's settings (missing: all off)
 int feature_on(int f);
 void feature_set(int f, int on);       // (saved at once)
 const char *feature_name(int f);       // capitals, for the settings screen
+// local play allowed: the switch where there is a settings file (a window); test runs without one: yes
+int host_local_play_on(void);
 
 #ifdef __cplusplus
 }

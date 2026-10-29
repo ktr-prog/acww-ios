@@ -52,6 +52,10 @@ typedef int sock_t;
 #include "plat.h"
 #include "nitro/wm.h"
 #include "savestate.h"
+#include "host_features.h"
+#if HOST_IOS
+void ios_bonjour_start(unsigned port, const unsigned char mac[6]);  // ios/ios_glue.m: the other copies on the network
+#endif
 
 int pxi7_send_pointer(u32 tag, void *p);
 
@@ -200,9 +204,7 @@ static u32 get32(const u8 *p) { return get16(p) | (u32)get16(p + 2) << 16; }
 
 static void net_open(void) {
     if (sSock != BAD_SOCK) return;
-#if HOST_IOS
-    return;  // (iOS: no DS-to-DS play - the radio finds no one; no local network use, so no permission asked)
-#endif
+    if (!host_local_play_on()) return;  // (the settings' LOCAL PLAY off: the radio finds no one)
 #ifdef _WIN32
     static int started;
     if (!started) { WSADATA d; if (WSAStartup(MAKEWORD(2, 2), &d)) return; started = 1; }
@@ -234,6 +236,9 @@ static void net_open(void) {
         return;
     }
     sLan = !getenv("ACWW_NET_LAN") || atoi(getenv("ACWW_NET_LAN")) != 0;
+#if HOST_IOS
+    sLan = 0;  // (no broadcasts from an app without Apple's multicast permission: the copies are found by Bonjour)
+#endif
     sPeerCount = 0;
     for (const char *p = getenv("ACWW_NET_PEER"); p && *p && sPeerCount < 8;) {
         char host[256], *colon;
@@ -255,6 +260,25 @@ static void net_open(void) {
     }
     fprintf(stderr, "wm7: wireless on UDP port %u (MAC %02x:%02x:%02x:%02x:%02x:%02x)\n", sPort, sMac[0], sMac[1],
             sMac[2], sMac[3], sMac[4], sMac[5]);
+#if HOST_IOS
+    ios_bonjour_start(sPort, sMac);
+#endif
+}
+
+// another copy found on the network (iOS: Bonjour, from the frontend between frames): sent beacons and probes like
+// an ACWW_NET_PEER
+void wm7_add_peer(u32 ipv4_be, u16 port) {
+    for (int i = 0; i < sPeerCount; i++)
+        if (sPeers[i].sin_addr.s_addr == ipv4_be && sPeers[i].sin_port == htons(port)) return;
+    if (sPeerCount >= 8) return;
+    struct sockaddr_in a = {0};
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = ipv4_be;
+    a.sin_port = htons(port);
+    sPeers[sPeerCount++] = a;
+    char s[32];
+    inet_ntop(AF_INET, &a.sin_addr, s, sizeof s);
+    fprintf(stderr, "wm7: another copy at %s port %u\n", s, port);
 }
 
 static void net_close(void) {
