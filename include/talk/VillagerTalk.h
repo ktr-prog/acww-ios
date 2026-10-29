@@ -103,7 +103,9 @@ public:
     /* 0x0ec */ Unk_020d8938_Fn updateFn;
     /* 0x0f4 */ Unk_020d8938_Fn closeFn;
     /* 0x0fc */ VillagerActor *actor;
-    /* 0x100 */ u8 pad_100[0x120 - 0x100];
+    /* 0x100 */ char topicFile[0x11e - 0x100];  // (the topic functions' message file and index:
+    /* 0x11e */ u8 topicIndex;                  //  include/talk/VillagerTalkRequestItemTopics.h)
+    /* 0x11f */ u8 pad_11f;
     /* 0x120 */ u16 itemFromPlayer;
     /* 0x122 */ u8 pad_122[2];
     /* 0x124 */ s32 memoryIndex;
@@ -118,9 +120,11 @@ public:
     /* 0x154 */ u8 unk_154;
     /* 0x155 */ u8 unk_155;
     /* 0x156 */ u16 unk_156;
-    /* 0x158 */ u32 unk_158;
-    /* 0x15c */ u32 unk_15c;
-    /* 0x160 */ u32 unk_160;
+    // (pointers the topic functions keep here - the delivery's recipient, the errand slot, the planned errand: a
+    // pointer's size on 64-bit hosts)
+    /* 0x158 */ void *unk_158;
+    /* 0x15c */ void *unk_15c;
+    /* 0x160 */ void *unk_160;
     /* 0x164 */ u32 unk_164;
     /* 0x168 */ union { Unk_020d8938_Fn unk_168; Unk_020d8938_FnS unk_168_s; };
     /* 0x170 */ union { Unk_020d8938_Fn unk_170; Unk_020d8938_FnS unk_170_s; };
