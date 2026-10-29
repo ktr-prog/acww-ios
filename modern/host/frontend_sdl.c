@@ -2,11 +2,11 @@
 // docs/portability.md 4.1). A window with both screens, keyboard and game controller input, the mouse or a finger on
 // the bottom screen as the touch panel, the sound through an SDL audio callback that reads the AcwwShm ring.
 //
-// Keys (the defaults; F1 opens the key binding screen, frontend_ui.c): arrows = D-pad, X = A, Z = B, S = X, A = Y,
+// Keys (fixed, frontend_ui.c; F2 opens the settings screen): arrows = D-pad, X = A, Z = B, S = X, A = Y,
 // Q = L, W = R, Enter = Start, Right Shift = Select (by position: the same keys on other layouts). F11: window size
 // 1x/2x/3x; Alt+Enter: full screen; M: mute (unless a DS button has it).
 // Game controllers (SDL's database): D-pad or left stick, the face buttons by position as on the DS (right = A,
-// bottom = B, top = X, left = Y), shoulders or triggers = L / R, Start, Back = Select; Back + Start: the binding
+// bottom = B, top = X, left = Y), shoulders or triggers = L / R, Start, Back = Select; Back + Start: the settings
 // screen.
 //
 // The game's thread calls this at each VBlank, on whichever game stack is running: SDL (and the video driver under
@@ -275,8 +275,8 @@ AcwwShm *frontend_backend_open(const char *argv0) {
         return sShm = 0;
     }
     ui_init();
-    {   // the optional features' settings (host_features.h): on iOS in the app's folder (the working directory), else next
-        // to the key bindings
+    {   // the optional features' settings (host_features.h): on iOS in the app's folder (the working directory), else in
+        // SDL's preference directory
 #if HOST_IOS
         features_init("acww-settings.txt");
 #else
@@ -587,8 +587,8 @@ static void window_shot(void) {
     }
 }
 
-// ---- ACWW_UI_SCRIPT="frame:item,item,...;...": scripted input for testing the binding screen - from that frame on,
-// one item at a time (a frame each, or a step of the paused binding screen): a key (SDL's scancode name, e.g. F1,
+// ---- ACWW_UI_SCRIPT="frame:item,item,...;...": scripted input for testing the settings screen - from that frame on,
+// one item at a time (a frame each, or a step of the paused settings screen): a key (SDL's scancode name, e.g. F2,
 // Down, Return: pressed and released), pad:<button> (SDL's name, e.g. pad:a: a controller button), shot:<file> (what
 // the window shows, as ACWW_WINSHOT), wait:<ms> (real time), quit (the window closed)
 static char sPendingShot[512];  // (taken by show, before the present)

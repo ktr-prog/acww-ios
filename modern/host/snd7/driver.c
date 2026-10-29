@@ -190,6 +190,12 @@ static void alarm_start(int idx) {
     struct SNDAlarm *a = &snd7_work.alarms[idx];
     // OS_SetAlarm(tick) fires after `tick`; OS_SetPeriodicAlarm(tick + now, period) first at tick + now
     sAlarmDue[idx] = host_cycles() + (a->tick ? a->tick : 1) * OS_TICK_CYCLES;
+    // Delivery latency: a stream's alarm (NNS_SndStrm) comes at the end of each block and the ARM9 refills the block
+    // just played. A channel runs 3 samples behind its start (spu.c), so a refill at the very tick overwrites the
+    // block's last samples before they are played - a click every block (a ~186 Hz buzz on the title stream). On
+    // the DS the alarm -> PXI -> ARM9 IRQ -> stream thread -> decode path takes far longer than 3 samples; a quarter
+    // of the period here keeps the refill clear of the read pointer and far ahead of the block's next use.
+    sAlarmDue[idx] += (u64)(a->period ? a->period : a->tick) * OS_TICK_CYCLES / 4;
     a->enable = 1;
 }
 

@@ -1168,6 +1168,30 @@ fixed-address executable, as its captures were taken). The guard variant (`--gua
     the game's own TCP/IP and SSL, a server - servers that no longer exist; Wiimmfi is a community one), a real DS,
     latency over the internet. A 32-bit and a 64-bit build don't play together (the visitor's game reports a broken
     connection on arrival: something the copies exchange differs between them; not looked into).
+34. **The title music (2026-10-29, the user's report: "the title music still is fucked"):** the title screen's music
+    is a stream (NNS_SndStrm: IMA-ADPCM, 47.6 kHz, two channels), refilled a block at a time from the stream thread
+    when the ARM7's alarm comes at the end of each block. The host fired the alarm at the block's very end, and the
+    stream thread refilled the block just played at once (in virtual time); a channel plays 3 samples behind its
+    position (the hardware's pipeline, modern/host/snd7/spu.c), so the refill overwrote the block's last 3 samples
+    before they were played: a click every block, a 186 Hz buzz over the whole piece. On the DS the alarm reaches the
+    ARM9 (PXI, IRQ, thread, decode) far later than 3 samples. snd7/driver.c now delivers an alarm a quarter of its
+    period after it is due. **Checks:** offline, the game's own decoder (MakeWaveData, the build's object) fed the
+    title stream (from the user's EUR sound_data.sdat; the same stream as USA) block by block through spu.c as the
+    game drives it: identical to the whole stream decoded at once and played straight (before: 2 wrong output
+    samples of every 176).
+35. **Save states across launches (2026-10-29: "save states still dont stay after a restart", "opening save state
+    crashes game"):** (a) the program was built with the stack protector (Apple's clang and Ubuntu's GCC default):
+    its canary is random per process, and a state from an earlier launch brings back the game threads' stacks with
+    that launch's canaries in their frames, so the first such frame to return aborted the app. Built without it now
+    (tools/configure_host.py). (b) The arena's fixed address (0x400000000) is beyond what iOS gives an app without
+    the extended addressing entitlement (0x3d8000000 at most): it was somewhere else every launch, and every word of
+    the state that looked like a pointer into it was moved - a pair of 32-bit values, the second 1 or 2, could be.
+    Now the first free of 0x380000000, 0x2b0000000, 0x400000000; the ROM image is at its top (the same place each
+    launch; nothing in the state points into it). (c) Pointers into the program still move by its ASLR slide: on
+    Mach-O a word in data that points into the code but not at a function's start (LC_FUNCTION_STARTS) is left
+    alone (stacks: return addresses, moved). **Checks:** the cross-process test (a coroutine "game" with data, bss,
+    an arena list, a function pointer and a ROM pointer saved in one process and loaded in others, the program
+    elsewhere each time; the arena at its fixed place and, with all three places taken, elsewhere): all passed.
 
 ---
 

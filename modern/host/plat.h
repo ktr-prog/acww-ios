@@ -38,6 +38,9 @@ void *host_plat_pages_alloc(size_t n);
 int host_plat_arena(uintptr_t *base, size_t *used);
 int host_plat_arena_set_used(size_t used);
 int host_plat_commit(void *p, size_t n);
+// n bytes (readable, writable; whole pages) at the arena's top, down from its end: memory at the same place in every
+// launch that the save states don't hold (the ROM image). 0 if there is no arena or no room.
+void *host_plat_arena_top(size_t n);
 
 // ---- the program image: [*lo, *hi) holds the program's code, data and bss; 0 where that isn't known
 int host_plat_image_bounds(uintptr_t *lo, uintptr_t *hi);

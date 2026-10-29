@@ -28,7 +28,14 @@ void card_init(const char *path) {
     if (!sRom) { perror(path); exit(1); }
     if (n > 0xffffffffu) host_fatal("the ROM file is larger than 4 GB");
     sRomSize = (u32)n;
-    host_state_foreign(sRom, n);
+    // (at the arena's top where there is one: the same place in every launch. Nothing in the game's state points
+    // into the image - the card registers copy from it - so a save state needs nothing of it either way.)
+    void *fixed = host_plat_arena_top(n);
+    if (fixed) {
+        memcpy(fixed, sRom, n);
+        free((void *)sRom);
+        sRom = fixed;
+    }
 }
 
 const u8 *host_rom(u32 *size) { *size = sRomSize; return sRom; }

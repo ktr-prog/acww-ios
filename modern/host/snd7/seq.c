@@ -431,7 +431,7 @@ static int TrackReadVLV(struct SNDTrack *track)
 
 static int TrackParseValue(struct SNDTrack *track, struct SNDPlayer *player, int valueType)
 {
-    int retval;
+    int retval = 0;  // (the DS: whatever its register held - an invalid type or variable)
     int hi;
     int lo;
     int ran;

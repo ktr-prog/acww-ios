@@ -7,14 +7,16 @@
 // save was taken. The blocks are never freed, so a saved block is still there when its state is loaded.
 //
 // A state is also written to a file (STATE_FILE, in the working directory: on iOS the app's folder), so it can be
-// loaded after the app was closed. Another launch has the program at another address (ASLR) and maybe the arena
-// elsewhere (plat.h: its fixed address taken), and the ROM image too: the file keeps where everything was, and a
-// load moves every 8-byte word of the state that points into those old places by how far each moved (the program,
-// the arena, the ROM). A word that only looks like such a pointer would be moved too: the only such values are the
-// virtual clock's (cycles and OS ticks, 64-bit), which are near those addresses only around certain moments of play
-// (about 2 minutes in for the program); a state taken then loads only in the launch that took it (refused after).
-// The file is only for this build (its id is in it), the HostPtr32 table travels with it, and the variables that
-// hold this launch's own things (the frontend's block, the ROM image, open files: host_state_keep) keep theirs.
+// loaded after the app was closed. The arena (plat.h) is at a fixed place, the same in every launch; the program is
+// elsewhere in each (ASLR): the file keeps where it was, and a load moves every 8-byte word of the state that points
+// into the old program by how far it moved (and into the old arena, in the rare launch that had it elsewhere). A word
+// that only looks like such a pointer would be moved too: in data, a word pointing into the code that isn't a
+// function's start is left alone (Mach-O: function_starts); the virtual clock's values (cycles and OS ticks, 64-bit)
+// are near those addresses only around certain moments of play, and a state taken then loads only in the launch that
+// took it (refused after). The file is only for this build (its id is in it), the HostPtr32 table travels with it,
+// and the variables that hold this launch's own things (the frontend's block, the ROM image, open files:
+// host_state_keep) keep theirs. The program is built without the stack protector: its canaries in the saved stacks'
+// frames are per launch (tools/configure_host.py).
 // (Everything is on the main thread: the game's coroutines and the frontend. The audio thread reads only the
 // frontend's ring.)
 #include <stdint.h>
@@ -32,14 +34,14 @@
 #include "savestate.h"
 
 #define STATE_FILE "acww-state.bin"
-#define STATE_MAGIC "ACWWST02"
+#define STATE_MAGIC "ACWWST03"
 
 extern char gHostStateDataEnd[1], gHostStateBssEnd[1];
 char *host_state_static_bss_end(void);  // (modern/link/state_end.c)
 unsigned int HostPtr32_Export(const void *const **ptrs);  // (ptr32.c)
 void HostPtr32_Import(const void *const *ptrs, unsigned int n);
 
-typedef struct { unsigned char *p; size_t n; } Region;
+typedef struct { unsigned char *p; size_t n; int stack; } Region;
 enum { MAX_REGIONS = 512, MAX_KEEP = 32, MAX_FOREIGN = 4 };
 static Region sRegions[MAX_REGIONS];
 static int sNRegions, sOverflow;
@@ -61,11 +63,13 @@ static char sMessage[96];
 const char *host_state_message(void) { return sMessage; }
 static void message(const char *m) { snprintf(sMessage, sizeof sMessage, "%s", m); }
 
-void host_state_track(void *p, size_t n) {
+static void track(void *p, size_t n, int stack) {
     if (!p || !n) return;
     if (sNRegions == MAX_REGIONS) { sOverflow = 1; return; }
-    sRegions[sNRegions++] = (Region){p, n};
+    sRegions[sNRegions++] = (Region){p, n, stack};
 }
+void host_state_track(void *p, size_t n) { track(p, n, 0); }
+void host_state_track_stack(void *p, size_t n) { track(p, n, 1); }
 
 void host_state_untrack(void *p) {
     for (int i = 0; i < sNRegions; i++)
@@ -224,7 +228,7 @@ static void write_file(void) {
 #define PUT(p, n) do { fwrite((p), 1, (n), f); sum = fnv(sum, (p), (n)); } while (0)
     PUT(&h, sizeof h);
     for (int i = 0; i < sNSaved; i++) {
-        uint64_t r[2] = {(uintptr_t)sSaved[i].p, sSaved[i].n};
+        uint64_t r[2] = {(uintptr_t)sSaved[i].p, sSaved[i].n | (uint64_t)(sSaved[i].stack != 0) << 63};
         PUT(r, sizeof r);
     }
     for (int i = 0; i < sNForeign; i++) {
@@ -328,18 +332,100 @@ static int restore(void **gameSp) {
 }
 
 // ---- reading a file: into sSaved / sSnap at this launch's places, its pointers moved
-typedef struct { uint64_t lo, hi; int64_t d; } Move;
-static int moved(uint64_t a, const Move *m, int nm, uint64_t *out) {
+typedef struct { uint64_t lo, hi; int64_t d; int image; } Move;
+
+// Mach-O: the program's functions' starts (LC_FUNCTION_STARTS) and its code section, at this launch's places. A word
+// of the state that points into the code is a function pointer (data) or a return address (a stack): in data, one
+// that isn't a function's start is a number that only looks like a pointer (iOS has the program at 0x1xxxxxxxx: a
+// pair of 32-bit values, the second 1, can look like one) and stays as it is.
+static uintptr_t *sFuncs;
+static size_t sNFuncs;
+static uintptr_t sTextLo, sTextHi;
+static void function_starts(void) {
+#if defined(__APPLE__)
+    static int done;
+    if (done) return;
+    done = 1;
+    const struct mach_header_64 *mh = (const struct mach_header_64 *)_dyld_get_image_header(0);
+    intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+    if (!mh || mh->magic != MH_MAGIC_64) return;
+    const unsigned char *c = (const unsigned char *)(mh + 1);
+    uint64_t textVm = 0, leVm = 0, leOff = 0;
+    uint32_t fsOff = 0, fsSize = 0;
+    int haveText = 0, haveLe = 0;
+    for (uint32_t i = 0; i < mh->ncmds; i++) {
+        const struct load_command *lc = (const struct load_command *)c;
+        if (lc->cmd == LC_SEGMENT_64) {
+            const struct segment_command_64 *sg = (const struct segment_command_64 *)c;
+            if (!strcmp(sg->segname, "__TEXT")) {
+                textVm = sg->vmaddr, haveText = 1;
+                const struct section_64 *sec = (const struct section_64 *)(sg + 1);
+                for (uint32_t k = 0; k < sg->nsects; k++)
+                    if (!strncmp(sec[k].sectname, "__text", 16)) {
+                        sTextLo = (uintptr_t)(sec[k].addr + slide);
+                        sTextHi = (uintptr_t)(sec[k].addr + sec[k].size + slide);
+                    }
+            } else if (!strcmp(sg->segname, "__LINKEDIT")) {
+                leVm = sg->vmaddr, leOff = sg->fileoff, haveLe = 1;
+            }
+        } else if (lc->cmd == LC_FUNCTION_STARTS) {
+            const struct linkedit_data_command *ld = (const struct linkedit_data_command *)c;
+            fsOff = ld->dataoff, fsSize = ld->datasize;
+        }
+        c += lc->cmdsize;
+    }
+    if (!haveText || !haveLe || !fsSize || sTextLo >= sTextHi) { sTextLo = sTextHi = 0; return; }
+    const unsigned char *d = (const unsigned char *)(uintptr_t)(leVm + slide + (fsOff - leOff)), *e = d + fsSize;
+    size_t cap = 0;
+    uint64_t addr = textVm + (uint64_t)slide;
+    while (d < e) {
+        uint64_t delta = 0;
+        int shift = 0;
+        while (d < e) {
+            unsigned char b = *d++;
+            delta |= (uint64_t)(b & 0x7f) << shift;
+            shift += 7;
+            if (!(b & 0x80)) break;
+        }
+        if (!delta) break;
+        addr += delta;
+        if (sNFuncs == cap) {
+            uintptr_t *f = realloc(sFuncs, (cap = cap ? cap * 2 : 65536) * sizeof *sFuncs);
+            if (!f) { free(sFuncs); sFuncs = 0, sNFuncs = 0; sTextLo = sTextHi = 0; return; }
+            sFuncs = f;
+        }
+        sFuncs[sNFuncs++] = (uintptr_t)addr;  // (in order: the deltas are positive)
+    }
+    if (!sNFuncs) sTextLo = sTextHi = 0;
+#endif
+}
+static int function_start(uintptr_t a) {
+    size_t lo = 0, hi = sNFuncs;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (sFuncs[mid] < a) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo < sNFuncs && sFuncs[lo] == a;
+}
+
+// a's place in this launch, if it points into a range that moved (inStack: a word of a stack)
+static int moved(uint64_t a, const Move *m, int nm, int inStack, uint64_t *out) {
     for (int i = 0; i < nm; i++)
-        if (a >= m[i].lo && a < m[i].hi) { *out = a + (uint64_t)m[i].d; return 1; }
+        if (a >= m[i].lo && a < m[i].hi) {
+            uint64_t w = a + (uint64_t)m[i].d;
+            if (m[i].image && !inStack && w >= sTextLo && w < sTextHi && !function_start((uintptr_t)w)) return 0;
+            *out = w;
+            return 1;
+        }
     return 0;
 }
-static void relocate(unsigned char *buf, size_t n, uint64_t addr, const Move *m, int nm) {
+static void relocate(unsigned char *buf, size_t n, uint64_t addr, int inStack, const Move *m, int nm) {
     size_t i = (size_t)((8 - (addr & 7)) & 7);
     for (; i + 8 <= n; i += 8) {
         uint64_t v, w;
         memcpy(&v, buf + i, 8);
-        if (v && moved(v, m, nm, &w)) memcpy(buf + i, &w, 8);
+        if (v && moved(v, m, nm, inStack, &w)) memcpy(buf + i, &w, 8);
     }
 }
 
@@ -375,8 +461,9 @@ static int load_file(void) {
     Move mv[2 + MAX_FOREIGN];
     int nm = 0;
     int64_t slide = (int64_t)(lo - h.imageLo), adelta = (int64_t)(abase - h.arenaBase);
-    if (slide) mv[nm++] = (Move){h.imageLo, h.imageHi, slide};
-    if (adelta && h.arenaUsed) mv[nm++] = (Move){h.arenaBase, h.arenaBase + h.arenaUsed, adelta};
+    if (slide) mv[nm++] = (Move){h.imageLo, h.imageHi, slide, 1};
+    if (adelta && h.arenaUsed) mv[nm++] = (Move){h.arenaBase, h.arenaBase + h.arenaUsed, adelta, 0};
+    if (slide) function_starts();
     // (a state taken when the clock was near a range that moved: refused, see the top)
     if ((slide && clock_near(h.cycles, h.imageLo, h.imageHi)) ||
         (adelta && h.arenaUsed && clock_near(h.cycles, h.arenaBase, h.arenaBase + h.arenaUsed))) {
@@ -395,17 +482,19 @@ static int load_file(void) {
     if (h.nRegions > MAX_REGIONS + 3 || p > end) { free(file); message("THE STATE FILE IS DAMAGED"); return 0; }
     for (uint32_t i = 0; i < h.nForeign && i < (uint32_t)sNForeign; i++) {
         int64_t d = (int64_t)((uintptr_t)sForeign[i].p - foreign[2 * i]);
-        if (d && foreign[2 * i + 1] == sForeign[i].n) mv[nm++] = (Move){foreign[2 * i], foreign[2 * i] + foreign[2 * i + 1], d};
+        if (d && foreign[2 * i + 1] == sForeign[i].n)
+            mv[nm++] = (Move){foreign[2 * i], foreign[2 * i] + foreign[2 * i + 1], d, 0};
     }
     // the regions at this launch's places: the program's ranges with the program, the rest in the arena
     Region list[MAX_REGIONS + 3];
     size_t total = 0;
     for (uint32_t i = 0; i < h.nRegions; i++) {
-        uint64_t a = regs[2 * i], n = regs[2 * i + 1], na;
+        uint64_t a = regs[2 * i], n = regs[2 * i + 1] & ~(1ull << 63), na;
+        int stack = (int)(regs[2 * i + 1] >> 63);
         if (a >= h.imageLo && a < h.imageHi) na = a + (uint64_t)slide;
         else if (haveArena && a >= h.arenaBase && a + n <= h.arenaBase + h.arenaUsed) na = a + (uint64_t)adelta;
         else { free(file); message("THE STATE CAN'T BE LOADED HERE"); fprintf(stderr, "savestate: a block outside the arena\n"); return 0; }
-        list[i] = (Region){(unsigned char *)(uintptr_t)na, (size_t)n};
+        list[i] = (Region){(unsigned char *)(uintptr_t)na, (size_t)n, stack};
         total += (size_t)n;
     }
     // the program's ranges must be this build's
@@ -435,7 +524,7 @@ static int load_file(void) {
                 memset(snap + at + q * PAGE, 0, len);
             }
         }
-        if (nm) relocate(snap + at, n, regs[2 * i], mv, nm);
+        if (nm) relocate(snap + at, n, regs[2 * i], list[i].stack, mv, nm);
         at += n;
     }
     if (!ok) { free(snap), free(file); message("THE STATE FILE IS DAMAGED"); return 0; }
@@ -453,7 +542,7 @@ static int load_file(void) {
     if (!ptrs) { free(snap), free(file); message("NO MEMORY FOR A STATE"); return 0; }
     for (uint32_t i = 0; i < h.nPtrs; i++) {
         uint64_t v = fptrs[i], w;
-        ptrs[i] = (const void *)(uintptr_t)(moved(v, mv, nm, &w) ? w : v);
+        ptrs[i] = (const void *)(uintptr_t)(moved(v, mv, nm, 0, &w) ? w : v);
     }
     HostPtr32_Import(ptrs, h.nPtrs);
     free(ptrs);
@@ -463,9 +552,9 @@ static int load_file(void) {
     memcpy(sSaved, list, h.nRegions * sizeof *list);
     sNSaved = (int)h.nRegions;
     uint64_t sp = h.gameSp, nsp;
-    sSnapSp = (void *)(uintptr_t)(moved(sp, mv, nm, &nsp) ? nsp : sp);
+    sSnapSp = (void *)(uintptr_t)(moved(sp, mv, nm, 1, &nsp) ? nsp : sp);
     sNRegions = 0;
-    for (uint32_t i = (uint32_t)np; i < h.nRegions; i++) host_state_track(list[i].p, list[i].n);
+    for (uint32_t i = (uint32_t)np; i < h.nRegions; i++) track(list[i].p, list[i].n, list[i].stack);
     free(file);
     fprintf(stderr, "savestate: %s read (program moved by %lld, arena by %lld)\n", STATE_FILE, (long long)slide,
             (long long)adelta);

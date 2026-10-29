@@ -9,6 +9,7 @@
 // memory of the game's state outside the program's data and bss: the page blocks and the game's stacks
 // (host_plat_pages_alloc, host_plat_stack_alloc call it); never freed
 void host_state_track(void *p, size_t n);
+void host_state_track_stack(void *p, size_t n);  // (a stack: return addresses into functions' code)
 // a block host_state_track was told about that isn't the game's (the frontend's own stack): not copied
 void host_state_untrack(void *p);
 // a variable inside the state's range that a load leaves as it is: one that holds this launch's own things (the save

@@ -93,7 +93,7 @@ void *host_plat_stack_alloc(size_t n, int flags) {
     if (!p) return 0;
     DWORD old;
     VirtualProtect(p, page, PAGE_NOACCESS, &old);
-    host_state_track(p + page, n);  // (a game thread's stack: savestate.c)
+    host_state_track_stack(p + page, n);  // (a game thread's stack: savestate.c)
     return p + page;
 }
 
@@ -105,6 +105,7 @@ void host_plat_stack_free(void *stack, size_t n) {
 
 int host_plat_arena(uintptr_t *base, size_t *used) { (void)base; (void)used; return 0; }
 int host_plat_arena_set_used(size_t used) { (void)used; return 0; }
+void *host_plat_arena_top(size_t n) { (void)n; return 0; }
 int host_plat_commit(void *p, size_t n) { (void)p; (void)n; return 0; }
 
 void *host_plat_pages_alloc(size_t n) {

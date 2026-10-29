@@ -93,35 +93,55 @@ static size_t page_size(void) {
 
 // ---- the arena (plat.h): one reservation at a fixed address, its pages made accessible as they are handed out
 #if UINTPTR_MAX > 0xffffffffu
-#define ARENA_AT ((uintptr_t)0x400000000ull)  // (16 GB: inside what iOS gives an app)
+// The places tried, in order; the first one free is where the arena is, the same place in every launch as long as
+// it is free then (a state file's pointers into the arena then need no moving: savestate.c). iOS gives an app the
+// addresses up to 0x2d8000000 (1-3 GB devices) or 0x3d8000000 (more) without the extended addressing entitlement,
+// above its program (0x100000000 + ASLR), the dyld shared region (0x180000000-0x280000000) and the 512 MB after it;
+// its allocations are made from the bottom up, so the arena goes at the top of that range.
+static const uintptr_t kArenaAt[] = {0x380000000ull, 0x2b0000000ull, 0x400000000ull};
 #define ARENA_SIZE ((size_t)512 << 20)
 static unsigned char *sArena;
-static size_t sArenaUsed;
+static size_t sArenaUsed, sArenaTop;  // (bottom up: the tracked blocks and stacks; top down: host_plat_arena_top)
 static int sArenaTried;
-static unsigned char *arena_take(size_t n) {
-    if (!sArenaTried) {
-        sArenaTried = 1;
-        void *p = mmap((void *)ARENA_AT, ARENA_SIZE, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
-        if (p == MAP_FAILED) p = 0;
-        sArena = p;
-        if (p && (uintptr_t)p != ARENA_AT)
-            fprintf(stderr, "host: the memory arena is at %p, not %p (save states from other launches: moved)\n", p,
-                    (void *)ARENA_AT);
+static void arena_reserve(void) {
+    sArenaTried = 1;
+    for (size_t i = 0; i < sizeof kArenaAt / sizeof *kArenaAt && !sArena; i++) {
+        void *p = mmap((void *)kArenaAt[i], ARENA_SIZE, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+        if (p == MAP_FAILED) continue;
+        if ((uintptr_t)p == kArenaAt[i]) sArena = p;
+        else munmap(p, ARENA_SIZE);  // (the system put it elsewhere: that place is taken or not the app's)
     }
-    if (!sArena || n > ARENA_SIZE - sArenaUsed) return 0;
+    if (!sArena) {  // anywhere (a state from another launch has its pointers into the arena moved)
+        void *p = mmap(0, ARENA_SIZE, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+        sArena = p == MAP_FAILED ? 0 : p;
+        if (sArena) fprintf(stderr, "host: the memory arena is at %p, none of its fixed places free\n", (void *)sArena);
+    }
+}
+static unsigned char *arena_take(size_t n) {
+    if (!sArenaTried) arena_reserve();
+    if (!sArena || n > ARENA_SIZE - sArenaTop - sArenaUsed) return 0;
     unsigned char *p = sArena + sArenaUsed;
     if (mprotect(p, n, PROT_READ | PROT_WRITE) != 0) return 0;
     sArenaUsed += n;
     return p;
 }
+void *host_plat_arena_top(size_t n) {
+    if (!sArenaTried) arena_reserve();
+    n = (n + page_size() - 1) & ~(page_size() - 1);
+    if (!sArena || n > ARENA_SIZE - sArenaTop - sArenaUsed) return 0;
+    unsigned char *p = sArena + ARENA_SIZE - sArenaTop - n;
+    if (mprotect(p, n, PROT_READ | PROT_WRITE) != 0) return 0;
+    sArenaTop += n;
+    return p;
+}
 int host_plat_arena(uintptr_t *base, size_t *used) {
-    if (!sArenaTried) arena_take(0);
+    if (!sArenaTried) arena_reserve();
     if (!sArena) return 0;
     *base = (uintptr_t)sArena, *used = sArenaUsed;
     return 1;
 }
 int host_plat_arena_set_used(size_t used) {
-    if (!sArena || used > ARENA_SIZE) return 0;
+    if (!sArena || used > ARENA_SIZE - sArenaTop) return 0;
     if (used > sArenaUsed && mprotect(sArena + sArenaUsed, used - sArenaUsed, PROT_READ | PROT_WRITE) != 0) return 0;
     sArenaUsed = used;
     return 1;
@@ -134,6 +154,7 @@ int host_plat_commit(void *p, size_t n) {
 }
 #else
 static unsigned char *arena_take(size_t n) { (void)n; return 0; }
+void *host_plat_arena_top(size_t n) { (void)n; return 0; }
 int host_plat_arena(uintptr_t *base, size_t *used) { (void)base; (void)used; return 0; }
 int host_plat_arena_set_used(size_t used) { (void)used; return 0; }
 int host_plat_commit(void *p, size_t n) { (void)p; (void)n; return 0; }
@@ -148,7 +169,7 @@ void *host_plat_stack_alloc(size_t n, int flags) {
     if (!p) p = mmap(0, n + page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (p == MAP_FAILED || !p) return 0;
     mprotect(p, page, PROT_NONE);
-    host_state_track(p + page, n);  // (a game thread's stack: savestate.c)
+    host_state_track_stack(p + page, n);  // (a game thread's stack: savestate.c)
     return p + page;
 }
 

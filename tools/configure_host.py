@@ -361,6 +361,14 @@ if not args.oracle:  # (no melonDS: its headers and libraries aren't needed)
     MELON_LIBS = ""
     HOST_CXX_FLAGS = re.sub(f" -I{re.escape(M)}/\\S+| -DJIT_ENABLED| -DGDBSTUB_ENABLED", "", HOST_CXX_FLAGS)
 
+# no stack protector (Apple's clang and distributions' GCC turn it on by default): its canary is a random value per
+# process, and a save state from another launch brings back the game threads' stacks with the old launch's canaries
+# in their frames - the first of those frames to return would abort the app (modern/host/savestate.c)
+if "stack-protector" not in args.extra_cflags:  # (a debugging build's own choice stays)
+    GAME_FLAGS += " -fno-stack-protector"
+HOST_FLAGS += " -fno-stack-protector"
+HOST_CXX_FLAGS += " -fno-stack-protector"
+
 # WebGPU (wgpu-native, linked statically): ACWW_RENDERER3D=wgpu
 WGPU = args.wgpu
 if IOS:

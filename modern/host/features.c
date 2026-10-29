@@ -1,4 +1,4 @@
-// Host build: the optional features (host_features.h; the list and their state: docs/features.md).
+// Host build: the optional features (host_features.h).
 #include "host_features.h"
 
 #include <stdio.h>
@@ -6,12 +6,9 @@
 #include <string.h>
 
 static const struct {
-    const char *key, *name, *help[3];
+    const char *key, *name;
 } kFeatures[FEAT_COUNT] = {
-    [FEAT_CIRCLE_PAD] = {"circle_pad", "CIRCLE PAD",
-                         {"WALK AT ANY SPEED: THE D-PAD BECOMES A",
-                          "CIRCLE PAD; ON A CONTROLLER, ITS LEFT",
-                          "STICK. HOLD B TO RUN, AS WITH THE D-PAD."}},
+    [FEAT_CIRCLE_PAD] = {"circle_pad", "CIRCLE PAD"},
 };
 static int sOn[FEAT_COUNT];
 static char sPath[1024];
@@ -56,7 +53,3 @@ void feature_set(int f, int on) {
 }
 
 const char *feature_name(int f) { return f >= 0 && f < FEAT_COUNT ? kFeatures[f].name : ""; }
-const char *feature_help(int f, int line) {
-    if (f < 0 || f >= FEAT_COUNT || line < 0 || line >= 3 || !kFeatures[f].help[line]) return "";
-    return kFeatures[f].help[line];
-}

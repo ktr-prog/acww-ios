@@ -140,11 +140,10 @@ audio device (SDL), about 70 ms behind. The 64-bit builds have the frontend in t
 (`frontend_sdl.c`, SDL2, linked with the system's libSDL2; docs/portability.md 4.1): also game controllers (D-pad or
 left stick; the face buttons by position as on the DS: right = A, bottom = B, top = X, left = Y; shoulders or
 triggers = L/R; Start; Back = Select), a finger on the bottom screen as the touch, F11 the window size 1x/2x/3x,
-Alt+Enter full screen, and a key binding screen (`frontend_ui.c`): hidden until F1 (or a controller's Back +
-Start) opens it, the game paused while it is open, every DS button's key and controller button changeable, kept in
-`bindings.txt` in SDL's preference directory (`~/.local/share/acww/`; `ACWW_BINDINGS=<file>`: another);
-`ACWW_UI_SCRIPT="frame:F1,Down,Return,K,shot:file.ppm,Escape;..."` scripts it for tests (keys by SDL's names,
-`pad:<button>`, `shot:`). The i386 build, which can't load the system's 64-bit SDL, starts the viewer program
+Alt+Enter full screen, and a settings screen (`frontend_ui.c`: the optional features, each off by default): hidden
+until F2 (or a controller's Back + Start) opens it, the game paused while it is open, kept in `settings.txt` in SDL's
+preference directory (`~/.local/share/acww/`); `ACWW_UI_SCRIPT="frame:F2,Down,Return,shot:file.ppm,Escape;..."`
+scripts it for tests (keys by SDL's names, `pad:<button>`, `shot:`). The keys are fixed. The i386 build, which can't load the system's 64-bit SDL, starts the viewer program
 (`acww-viewer`, `frontend_viewer.c` + `viewer/`, sharing memory with the game) instead. Without a display (testing):
 `SDL_VIDEODRIVER=dummy` (or `offscreen`) and `SDL_AUDIODRIVER=dummy` (or `disk`); `ACWW_WINSHOT="frame:file.ppm;..."`
 writes the window's picture as drawn. Window runs use the host's clock (see `ACWW_RTC`), so they differ from headless

@@ -63,13 +63,12 @@ closed. A new version of the app can't load an older version's state. A state sa
 after starting the app loads only until the app is closed (a message says so). Loading a state doesn't touch the
 game's save file.
 
-**MENU** opens the settings: the optional features (docs/features.md), each off until you switch it on. The first one
-is the **circle pad**: the D-pad becomes a circle pad for walking at any speed.
+**MENU** opens the settings: the optional features, each off until you switch it on (the game as on the DS).
 
 **Game controllers** (Xbox, PlayStation, MFi and others that iOS supports): connect one in Settings > Bluetooth. The
 on-screen buttons then hide and the screens grow. A touch next to the screens brings the buttons back. The face
 buttons are by position, as on the DS (right = A, bottom = B, top = X, left = Y). The left stick also works as the
-D-pad, and the triggers as L and R. Back + Start opens the button binding screen (the game pauses while it's open).
+D-pad, and the triggers as L and R. Back + Start opens the settings (the game pauses while they're open).
 
 **Keyboard** (iPad): the PC's keys (README.md).
 
