@@ -239,6 +239,11 @@ if MAC:
     # the base-object constructors and destructors (C2/D2) with the complete-object ones as their aliases, as on ELF:
     # Darwin's default emits only the variants a unit uses, and modern/gen/shared_table.c names the C2/D2 ones
     CXX_FLAGS += " -Xclang -mconstructor-aliases"
+    # zero-initialised variables with the initialised ones, in __data: ld64 sorts the zero-fill section __common (the
+    # external ones) by alignment instead of keeping the objects' order, which the ranges between modern/link/
+    # game_begin.c's and game_end.c's / state_end.c's variables need (HostMem_IsGameRam, the save states;
+    # tools/ios_check.py checks them in the link map); __data keeps it
+    GAME_FLAGS += " -fno-zero-initialized-in-bss"
 if args.extra_cflags:
     GAME_FLAGS += " " + args.extra_cflags
 # the sanitizer variant: the game, the runtime and the link with the same -fsanitize options; HOST_ASAN tells the
@@ -308,11 +313,12 @@ if MAC:
     HOST_FLAGS = ("-O1 -g -fno-omit-frame-pointer -ffp-contract=off -Wall -std=gnu11 -DHOST -Iinclude" + FRONTEND_FLAG
                   + SAN_FLAGS)
     LINK_FLAGS = SAN_FLAGS.replace(" -DHOST_ASAN", "")
+    HOST_FLAGS += " -fno-zero-initialized-in-bss"  # (the runtime's variables of the save states' range: as the game's)
     if IOS:
         HOST_FLAGS += " -DHOST_IOS=1"
         # (the link map: tools/ios_check.py checks the save states' ranges in it)
         LINK_FLAGS += f" -Wl,-map,{build.as_posix()}/acww.map"
-    HOST_CXX_FLAGS = "-O1 -g -ffp-contract=off -std=c++17 -DHOST" + SAN_FLAGS
+    HOST_CXX_FLAGS = "-O1 -g -ffp-contract=off -std=c++17 -DHOST -fno-zero-initialized-in-bss" + SAN_FLAGS
     MELON_LIBS = ""
 elif A64:
     # the cross toolchain's glibc; melonDS's core cross-built for aarch64 (build-core-a64: without the JIT and the GDB

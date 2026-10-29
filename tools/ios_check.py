@@ -233,6 +233,13 @@ def check_state(map_path, objects_path):
         elif not mine and inside:
             bad.append(f"{name} ({files.get(idx)}) at {a:#x}, inside the state range of {sec[1]} ({lo:#x}-{hi:#x})")
     if bad:
+        # (first a count per section: GitHub shows a step's first 10 annotations only)
+        per = {}
+        for b in bad:
+            m = re.search(r"range of (\S+) |in (\S+), which", b)
+            k = (m.group(1) or m.group(2)) if m else "?"
+            per[k] = per.get(k, 0) + 1
+        note("wrong side per section: " + ", ".join(f"{k} {v}" for k, v in sorted(per.items())))
         for b in bad[:30]:
             note(b)
         state_fail(f"{len(bad)} variables on the wrong side of the save states' ranges")
