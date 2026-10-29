@@ -52,7 +52,7 @@ static int overlap_controls(int i, int j, TcRect a, TcRect b) {
 static float cx(TcRect r) { return r.x + r.w / 2; }
 static float cy(TcRect r) { return r.y + r.h / 2; }
 
-static const char *kName[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "SAVE", "LOAD", "DPAD"};
+static const char *kName[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "SAVE", "LOAD", "MENU", "DPAD"};
 
 static void write_preview(const char *dir, const char *dev, const char *orient, int controls, const TcLayout *l,
                           float pt, const float safe[4]) {
@@ -152,7 +152,7 @@ static void check_touch(void) {
     tc_layout(&l, w, h, pt, safe, 1);
     TcState s;
     tc_reset(&s);
-    static const uint32_t kBits[] = {1u << 0, 1u << 1, 1u << 10, 1u << 11, 1u << 9, 1u << 8, 1u << 3, 1u << 2, 0, 0};
+    static const uint32_t kBits[] = {1u << 0, 1u << 1, 1u << 10, 1u << 11, 1u << 9, 1u << 8, 1u << 3, 1u << 2, 0, 0, 0};
     for (int b = 0; b < TC_DPAD; b++) {
         tc_pointer(&s, &l, 7, TC_DOWN, cx(l.button[b]), cy(l.button[b]));
         CHECK(tc_keys(&s) == kBits[b], "button %s gives keys %#x", kName[b], tc_keys(&s));
@@ -191,6 +191,33 @@ static void check_touch(void) {
     tc_pointer(&s, &l, 2, TC_UP, 0, 0);
     tc_pointer(&s, &l, 1, TC_UP, 0, 0);
     CHECK(tc_keys(&s) == 0, "all released: keys %#x", tc_keys(&s));
+    // the circle pad: the dead zone, a small push (analog only), full pushes (analog and the D-pad's directions, the
+    // diagonals two), the length at most 1, the release (back to the middle)
+    {
+        TcLayout st = l;
+        st.stick = 1;
+        float range = dp.w * TC_KNOB_TRAVEL, sx, sy;
+        tc_pointer(&s, &st, 2, TC_DOWN, cx(dp) + range * 0.05f, cy(dp));
+        CHECK(tc_stick(&s, &sx, &sy) && sx == 0 && sy == 0 && tc_keys(&s) == 0, "stick dead zone: %f %f keys %#x", sx, sy,
+              tc_keys(&s));
+        tc_pointer(&s, &st, 2, TC_MOVE, cx(dp) + range * 0.3f, cy(dp));
+        CHECK(tc_stick(&s, &sx, &sy) && sx > 0.15f && sx < 0.3f && fabsf(sy) < 1e-4f && tc_keys(&s) == 0,
+              "stick small push: %f %f keys %#x", sx, sy, tc_keys(&s));
+        struct { float a; uint32_t k; } sd[] = {
+            {0, 1u << 4}, {90, 1u << 6}, {180, 1u << 5}, {270, 1u << 7},
+            {45, 1u << 4 | 1u << 6}, {135, 1u << 5 | 1u << 6}, {225, 1u << 5 | 1u << 7}, {315, 1u << 4 | 1u << 7},
+        };
+        for (unsigned i = 0; i < sizeof sd / sizeof sd[0]; i++) {
+            float a = sd[i].a * 3.14159265f / 180;
+            tc_pointer(&s, &st, 2, TC_MOVE, cx(dp) + range * 2 * cosf(a), cy(dp) - range * 2 * sinf(a));
+            int held = tc_stick(&s, &sx, &sy);
+            CHECK(held && fabsf(sqrtf(sx * sx + sy * sy) - 1) < 1e-3f && fabsf(sx - cosf(a)) < 1e-3f &&
+                  fabsf(sy - sinf(a)) < 1e-3f && tc_keys(&s) == sd[i].k,
+                  "stick full at %.0f degrees: %f %f keys %#x, want %#x", sd[i].a, sx, sy, tc_keys(&s), sd[i].k);
+        }
+        tc_pointer(&s, &st, 2, TC_UP, 0, 0);
+        CHECK(!tc_stick(&s, &sx, &sy) && sx == 0 && sy == 0 && tc_keys(&s) == 0, "stick released");
+    }
     // the stylus: the bottom screen's corners, the top screen, a second finger
     TcRect sc = l.screens;
     int x, y;

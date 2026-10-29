@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "host_features.h"
 #include "frontend_ui.h"
 
 enum { W = 256, H = 384, NACT = 12, NLINES = NACT + 2 };
@@ -31,6 +32,11 @@ static const struct { const char *name; uint32_t bit; SDL_Scancode key; SDL_Game
 static SDL_Scancode sKey[NACT];
 static SDL_GameControllerButton sPad[NACT];
 static int sOpen, sLine, sCapture, sDirty = 1;
+// the page: the key bindings, or the settings (the optional features, host_features.h: a line each, then the key
+// bindings and close)
+enum { PAGE_BINDINGS, PAGE_SETTINGS };
+static int sPage;
+enum { SLINES = FEAT_COUNT + 2 };
 static char sPath[1024];
 
 // ---- the bindings and their file: a line per DS button, "<button>\t<key>\t<controller button>" (SDL's names; "-":
@@ -99,11 +105,46 @@ int ui_key_bound(SDL_Scancode sc) {
 int ui_is_open(void) { return sOpen; }
 
 // ---- the screen's controls
+static void choose_line(void);
 static void set_open(int open) {
-    if (sOpen && !open) save();
+    if (sOpen && !open && sPage == PAGE_BINDINGS) save();
     sOpen = open;
     sCapture = 0;
     sDirty = 1;
+}
+static void open_page(int page) {
+    if (sOpen && sPage == PAGE_BINDINGS && page != PAGE_BINDINGS) save();
+    sPage = page;
+    sLine = 0;
+    set_open(1);
+}
+void ui_open_settings(void) { open_page(PAGE_SETTINGS); }
+// the settings page's line: a feature on / off, the key bindings, close
+static void settings_choose(void) {
+    if (sLine < FEAT_COUNT) feature_set(sLine, !feature_on(sLine));
+    else if (sLine == FEAT_COUNT) open_page(PAGE_BINDINGS);
+    else set_open(0);
+    sDirty = 1;
+}
+// the lines' places (the overlay's pixels): the bindings page's 11 high, the settings page's 30 (touch sized)
+static int line_y(int i) {
+    if (sPage == PAGE_SETTINGS) return 44 + i * 32 + (i >= FEAT_COUNT ? 12 : 0);
+    return 36 + i * 11 + (i >= NACT ? 6 : 0);
+}
+int ui_tap(int x, int y) {
+    (void)x;
+    if (!sOpen) return 0;
+    int n = sPage == PAGE_SETTINGS ? SLINES : NLINES, h = sPage == PAGE_SETTINGS ? 28 : 11;
+    for (int i = 0; i < n; i++) {
+        int ly = line_y(i) - (sPage == PAGE_SETTINGS ? 7 : 2);
+        if (y < ly || y >= ly + h) continue;
+        sLine = i;
+        sDirty = 1;
+        if (sPage == PAGE_SETTINGS) settings_choose();
+        else if (i >= NACT) choose_line();  // (reset, close: a binding needs a key or a controller button)
+        return 1;
+    }
+    return 1;
 }
 static void bind_key(SDL_Scancode sc) {
     for (int i = 0; i < NACT; i++)
@@ -115,14 +156,22 @@ static void bind_pad(SDL_GameControllerButton b) {
         if (sPad[i] == b) sPad[i] = SDL_CONTROLLER_BUTTON_INVALID;
     sPad[sLine] = b;
 }
-static void choose(void) {  // Enter / A on the current line
+static void choose_line(void) {  // Enter / A on the current line
+    if (sPage == PAGE_SETTINGS) { settings_choose(); return; }
     if (sLine < NACT) sCapture = 1;
     else if (sLine == NACT) defaults();
     else set_open(0);
 }
+static int nlines(void) { return sPage == PAGE_SETTINGS ? SLINES : NLINES; }
 int ui_event(const SDL_Event *e) {
     if (e->type == SDL_KEYDOWN && !e->key.repeat && e->key.keysym.scancode == SDL_SCANCODE_F1) {
-        set_open(!sOpen);
+        if (sOpen && sPage == PAGE_BINDINGS) set_open(0);
+        else open_page(PAGE_BINDINGS);
+        return 1;
+    }
+    if (e->type == SDL_KEYDOWN && !e->key.repeat && e->key.keysym.scancode == SDL_SCANCODE_F2) {
+        if (sOpen && sPage == PAGE_SETTINGS) set_open(0);
+        else open_page(PAGE_SETTINGS);
         return 1;
     }
     if (e->type == SDL_CONTROLLERBUTTONDOWN && !sCapture) {  // Back + Start: open / close
@@ -130,7 +179,8 @@ int ui_event(const SDL_Event *e) {
         int b = e->cbutton.button;
         if (c && ((b == SDL_CONTROLLER_BUTTON_BACK && SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_START)) ||
                   (b == SDL_CONTROLLER_BUTTON_START && SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_BACK)))) {
-            set_open(!sOpen);
+            if (sOpen) set_open(0);
+            else open_page(PAGE_SETTINGS);
             return 1;
         }
     }
@@ -142,12 +192,13 @@ int ui_event(const SDL_Event *e) {
             if (sc != SDL_SCANCODE_ESCAPE && sc != SDL_SCANCODE_F11) bind_key(sc);
             sCapture = 0;
         } else if (sc == SDL_SCANCODE_UP) {
-            sLine = (sLine + NLINES - 1) % NLINES;
+            sLine = (sLine + nlines() - 1) % nlines();
         } else if (sc == SDL_SCANCODE_DOWN) {
-            sLine = (sLine + 1) % NLINES;
+            sLine = (sLine + 1) % nlines();
         } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
-            choose();
-        } else if ((sc == SDL_SCANCODE_DELETE || sc == SDL_SCANCODE_BACKSPACE) && sLine < NACT) {
+            choose_line();
+        } else if ((sc == SDL_SCANCODE_DELETE || sc == SDL_SCANCODE_BACKSPACE) && sLine < NACT &&
+                   sPage == PAGE_BINDINGS) {
             sKey[sLine] = SDL_SCANCODE_UNKNOWN;
             sPad[sLine] = SDL_CONTROLLER_BUTTON_INVALID;
         } else if (sc == SDL_SCANCODE_ESCAPE) {
@@ -159,12 +210,12 @@ int ui_event(const SDL_Event *e) {
             bind_pad(b);
             sCapture = 0;
         } else if (b == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-            sLine = (sLine + NLINES - 1) % NLINES;
+            sLine = (sLine + nlines() - 1) % nlines();
         } else if (b == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-            sLine = (sLine + 1) % NLINES;
+            sLine = (sLine + 1) % nlines();
         } else if (b == SDL_CONTROLLER_BUTTON_A) {
-            choose();
-        } else if (b == SDL_CONTROLLER_BUTTON_Y && sLine < NACT) {
+            choose_line();
+        } else if (b == SDL_CONTROLLER_BUTTON_Y && sLine < NACT && sPage == PAGE_BINDINGS) {
             sKey[sLine] = SDL_SCANCODE_UNKNOWN;
             sPad[sLine] = SDL_CONTROLLER_BUTTON_INVALID;
         } else if (b == SDL_CONTROLLER_BUTTON_B) {
@@ -236,11 +287,75 @@ static const char *pad_name(SDL_GameControllerButton b) {
     return s ? s : "?";
 }
 
+// text at twice the size (12 pixels a character)
+static void text2(int x, int y, const char *s, uint32_t argb) {
+    for (; *s; s++, x += 12) {
+        char c = *s >= 'a' && *s <= 'z' ? (char)(*s - 32) : *s;
+        if (c == ' ') continue;
+        const char *rows = NULL;
+        for (unsigned g = 0; g < sizeof kFont / sizeof kFont[0]; g++)
+            if (kFont[g].c == c) rows = kFont[g].rows;
+        if (!rows) continue;
+        for (int r = 0; r < 7; r++)
+            for (int b = 0; b < 5; b++)
+                if (rows[r * 5 + b] == '#') fill_rect(x + 2 * b, y + 2 * r, 2, 2, argb);
+    }
+}
+static void draw_settings(void) {
+    const uint32_t kBack = 0xf0101820, kBar = 0xff30508a, kText = 0xffffffff, kDim = 0xff98a8c0, kHi = 0xffffe070,
+                   kOn = 0xff60e080;
+    fill_rect(0, 0, W, H, kBack);
+    text2(8, 8, "SETTINGS", kHi);
+    for (int i = 0; i < SLINES; i++) {
+        int y = line_y(i);
+        if (i == sLine) fill_rect(4, y - 7, W - 8, 28, kBar);
+        if (i < FEAT_COUNT) {
+            text2(10, y, feature_name(i), kText);
+            text2(W - 10 - 36, y, feature_on(i) ? " ON" : "OFF", feature_on(i) ? kOn : kDim);
+        } else {
+            text2(10, y, i == FEAT_COUNT ? "KEY BINDINGS" : "CLOSE", kText);
+        }
+    }
+    int y = line_y(SLINES - 1) + 36;
+    if (sLine < FEAT_COUNT)
+        for (int k = 0; k < 3; k++) text(8, y + k * 11, feature_help(sLine, k), kDim, 0);
+    static const char *const kHelp[] = {
+        "TAP A LINE TO SWITCH IT. EACH FEATURE",
+        "STARTS OFF: THE GAME AS ON THE DS.",
+        "THE GAME IS PAUSED WHILE THIS IS OPEN.",
+        "",
+        "KEYBOARD: F2 OPENS THIS, F1 THE KEY",
+        "  BINDINGS. CONTROLLER: BACK+START.",
+    };
+    for (unsigned i = 0; i < sizeof kHelp / sizeof kHelp[0]; i++) text(8, H - 8 - 11 * (6 - (int)i), kHelp[i], kDim, 0);
+}
+
+// a short message over the bottom of the top screen for a few seconds (the game goes on)
+static char sToast[48];
+static int sToastFrames;
+void ui_toast(const char *msg) {
+    snprintf(sToast, sizeof sToast, "%s", msg ? msg : "");
+    sToastFrames = sToast[0] ? 150 : 0;
+    sDirty = 1;
+}
+static const uint32_t *toast_overlay(int *changed) {
+    if (!sToastFrames) return NULL;
+    if (--sToastFrames == 0) { *changed = 1; return NULL; }
+    if (*changed) {
+        memset(sPix, 0, sizeof sPix);
+        int n = (int)strlen(sToast), w = n * 6 + 12;
+        fill_rect((W - w) / 2, 172, w, 15, 0xe0101820);
+        text((W - n * 6) / 2, 176, sToast, 0xffffe070, 0);
+    }
+    return sPix;
+}
+
 const uint32_t *ui_overlay(int *changed) {
     *changed = sDirty;
-    if (!sOpen) { sDirty = 0; return NULL; }
+    if (!sOpen) { sDirty = 0; return toast_overlay(changed); }
     if (!sDirty) return sPix;
     sDirty = 0;
+    if (sPage == PAGE_SETTINGS) { draw_settings(); return sPix; }
     const uint32_t kBack = 0xf0101820, kBar = 0xff30508a, kText = 0xffffffff, kDim = 0xff98a8c0, kHi = 0xffffe070;
     fill_rect(0, 0, W, H, kBack);
     text(8, 6, "KEY BINDINGS", kHi, 0);
@@ -249,7 +364,7 @@ const uint32_t *ui_overlay(int *changed) {
     text(62, 22, "KEY", kDim, 0);
     text(158, 22, "CONTROLLER", kDim, 0);
     for (int i = 0; i < NLINES; i++) {
-        int y = 36 + i * 11 + (i >= NACT ? 6 : 0);
+        int y = line_y(i);
         if (i == sLine) fill_rect(4, y - 2, W - 8, 11, kBar);
         if (i == NACT) { text(8, y, "RESET TO DEFAULTS", kText, 0); continue; }
         if (i == NACT + 1) { text(8, y, "CLOSE", kText, 0); continue; }
@@ -269,8 +384,8 @@ const uint32_t *ui_overlay(int *changed) {
         "ESC OR F1: CLOSE AND SAVE",
         "",
         "CONTROLLER: D-PAD CHOOSES, A CHANGES,",
-        "  Y CLEARS, B CLOSES; BACK+START OPENS",
-        "  THIS. ITS LEFT STICK IS ALSO THE",
+        "  Y CLEARS, B CLOSES. F2: SETTINGS.",
+        "  ITS LEFT STICK IS ALSO THE",
         "  D-PAD, ITS TRIGGERS L AND R.",
         "",
         "THE GAME IS PAUSED WHILE THIS IS OPEN.",

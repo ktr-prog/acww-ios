@@ -103,6 +103,10 @@ void host_plat_stack_free(void *stack, size_t n) {
     if (stack) VirtualFree((unsigned char *)stack - page_size(), 0, MEM_RELEASE);
 }
 
+int host_plat_arena(uintptr_t *base, size_t *used) { (void)base; (void)used; return 0; }
+int host_plat_arena_set_used(size_t used) { (void)used; return 0; }
+int host_plat_commit(void *p, size_t n) { (void)p; (void)n; return 0; }
+
 void *host_plat_pages_alloc(size_t n) {
     void *p = VirtualAlloc(0, n, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     host_state_track(p, n);  // (the game's memory: savestate.c)

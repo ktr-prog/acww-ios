@@ -17,9 +17,12 @@
 
 #include "host.h"
 #include "overlay.h"
+#include "savestate.h"
 
 static unsigned char **sPristine;  // per unit: its variables' bytes as linked, one after the other
 static unsigned char *sKeep;       // per overlay id: not reset (ACWW_OVRESET)
+HOST_STATE_KEEP(sPristine)
+HOST_STATE_KEEP(sKeep)
 static unsigned sMaxId;
 static int sLog;
 

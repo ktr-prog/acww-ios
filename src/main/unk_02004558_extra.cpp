@@ -2,6 +2,8 @@
 // The 14 functions of the translation unit 0x02004558-0x0201106c that only mwcc 1.2/base compiles
 // to the original code (see unk_02004558.cpp; same declarations, nothing else is defined here).
 #include "types.h"
+#include "host_input.h"
+extern "C" s32 Math_Sqrt64(u64 x);
 #include "proto/main/unk_020b4828.h"
 #include "gfx/VecFx32.h"
 #include "net/CommManager.h"
@@ -928,6 +930,21 @@ void PlayerActor::readInput() {
             }
         }
         this->inputRun = fast;
+        // the circle pad (an optional feature, off by default: modern/host/host_features.h; docs/features.md): while it
+        // is pushed, its direction and how far - the arithmetic of the 3DS circle pad code (Action Replay, USA 1.1:
+        // a hook here, after inputRun is stored) - over what the D-pad or the stylus gave: the length / 105 (a full
+        // push), at most 1; walking (B not held) scaled to the D-pad's walking speed (0xc32); the angle as the
+        // stylus's (Math_Atan2 of right and towards the camera)
+        {
+            int sx, sy;
+            if (host_circle_pad(&sx, &sy)) {
+                s32 m = (s32)((u32)Math_Sqrt64((u64)((s64)sx * sx + (s64)sy * sy)) << 12) / 105;
+                if (m > 0x1000) m = 0x1000;
+                if (this->inputRun == 0) m = (s32)((u32)m * 0xc32) >> 12;
+                this->inputMagnitude = (u16)m;
+                this->inputAngle = (s16)Math_Atan2(sx, -sy);
+            }
+        }
     }
     this->interactPressed = v4;
     this->interactTarget = (Character *)v8;

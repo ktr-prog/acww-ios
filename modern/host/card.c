@@ -8,12 +8,17 @@
 
 #include "host.h"
 #include "plat.h"
+#include "savestate.h"
 
 #define ROMCTRL 0x040001a4u
 static const u8 *sRom;
 static u32 sRomSize;
 static const char *sRomPath;  // (host_rom_path: pxi7.c's default save file)
 static u32 sAddr, sLeft, sIsData;
+// (a loaded save state keeps this launch's image; pointers into the image follow it: savestate.c)
+HOST_STATE_KEEP(sRom)
+HOST_STATE_KEEP(sRomSize)
+HOST_STATE_KEEP(sRomPath)
 
 // the whole image in memory (read once; the DS's cards hold at most 512 MB, ACWW's is 16 MB)
 void card_init(const char *path) {
@@ -23,6 +28,7 @@ void card_init(const char *path) {
     if (!sRom) { perror(path); exit(1); }
     if (n > 0xffffffffu) host_fatal("the ROM file is larger than 4 GB");
     sRomSize = (u32)n;
+    host_state_foreign(sRom, n);
 }
 
 const u8 *host_rom(u32 *size) { *size = sRomSize; return sRom; }

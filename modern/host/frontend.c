@@ -10,8 +10,18 @@
 #include "frontend.h"
 #include "host.h"
 #include "host_mem.h"
+#include "savestate.h"
 
 static AcwwShm *sShm;
+HOST_STATE_KEEP(sShm)  // (this launch's block, not a loaded state's: savestate.c)
+
+// the circle pad (include/host_input.h): from the frontend's block (frontend_sdl.c fills it)
+int host_circle_pad(int *x, int *y) {
+    uint32_t w = sShm ? sShm->stick : 0;
+    *x = (int8_t)(w & 0xff);
+    *y = (int8_t)(w >> 8 & 0xff);
+    return (w >> 16 & 1) && (*x || *y);
+}
 
 #include "render.h"
 #include "wgpu_display.h"

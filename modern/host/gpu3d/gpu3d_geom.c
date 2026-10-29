@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "gpu3d_internal.h"
+#include "../savestate.h"
 
 // ---- state
 static int sGeomOn, sRenderOn;          // POWCNT1 bits 3 and 2
@@ -375,6 +376,7 @@ static void light_vector(u32 p) {
 // (diagnostics: the inputs of the last 64k lighting computations)
 typedef struct { s32 n[3]; s16 raw[3]; u32 lights; s16 dir[4][3]; u8 lc[4][3], dif[3], amb[3], spe[3], emi[3], out[3]; int table; s32 vec[9]; u32 lparam[4]; s32 lvec[4][9]; } LightRec;
 static LightRec *sLightRecs;
+HOST_STATE_KEEP(sLightRecs)  // (malloc'd by this launch)
 static unsigned sLightRecN;
 static int sCurLightRec = -1;
 void gpu3d_debug_light(int id) {

@@ -31,6 +31,13 @@ void *host_plat_stack_alloc(size_t n, int flags);
 void host_plat_stack_free(void *stack, size_t n);
 // n bytes of zeroed, page-aligned memory (anywhere), never freed; 0 if there is no memory.
 void *host_plat_pages_alloc(size_t n);
+// The arena (64-bit POSIX): the game's memory blocks and stacks above come from one reservation at a fixed address,
+// handed out in order, so they are at the same places at every launch (the save states keep across launches). 0 if
+// there is none (then they come from anywhere). set_used: the arena's end as a loaded state had it; commit: make a
+// range of the arena accessible (a loaded state's block that this run hasn't handed out, a stack's guard page).
+int host_plat_arena(uintptr_t *base, size_t *used);
+int host_plat_arena_set_used(size_t used);
+int host_plat_commit(void *p, size_t n);
 
 // ---- the program image: [*lo, *hi) holds the program's code, data and bss; 0 where that isn't known
 int host_plat_image_bounds(uintptr_t *lo, uintptr_t *hi);

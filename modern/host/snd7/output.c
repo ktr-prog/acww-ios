@@ -7,12 +7,16 @@
 
 #include "../frontend.h"
 #include "snd7.h"
+#include "../savestate.h"
 
 AcwwShm *frontend_shm(void);
 
 static FILE *sWav;
 static u32 sWavFrames;
 static int sWavInit;
+HOST_STATE_KEEP(sWav)
+HOST_STATE_KEEP(sWavFrames)
+HOST_STATE_KEEP(sWavInit)
 
 static void wav_header(void) {
     u32 data = sWavFrames * 4;

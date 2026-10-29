@@ -14,6 +14,8 @@ extern "C" {
 #endif
 unsigned int HostPtr32_Handle(const void *p);  // (modern/host/ptr32.c)
 void *HostPtr32_Lookup(unsigned int handle);
+unsigned int HostPtr32_Export(const void *const **ptrs);           // (the save states: modern/host/savestate.c)
+void HostPtr32_Import(const void *const *ptrs, unsigned int n);
 #ifdef __cplusplus
 }
 #endif

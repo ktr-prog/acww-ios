@@ -12,6 +12,7 @@
 #include "host_mem.h"
 #include "overlay.h"
 #include "plat.h"
+#include "savestate.h"
 
 int gHostVerbose;
 const char *gHostRomPath;
@@ -93,6 +94,7 @@ static void game_main(void *arg) {
 char **gHostArgv;  // (host_reset_system: the program starts again with them)
 // the process's own stack while the game runs on its stacks (iOS: the frontend runs on it, frontend_sdl.c)
 void *gHostMainSp;
+HOST_STATE_KEEP(gHostMainSp)
 #if HOST_IOS
 // (iOS: the app's main() is UIKit's, modern/host/ios/ios_glue.m, which calls this with the game's path)
 #define main host_main

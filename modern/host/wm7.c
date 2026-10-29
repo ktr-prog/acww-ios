@@ -51,6 +51,7 @@ typedef int sock_t;
 #include "host_mem.h"
 #include "plat.h"
 #include "nitro/wm.h"
+#include "savestate.h"
 
 int pxi7_send_pointer(u32 tag, void *p);
 
@@ -178,12 +179,15 @@ static int sSendCount;
 
 // ---- network
 static sock_t sSock = BAD_SOCK;
+HOST_STATE_KEEP(sSock)  // (this launch's socket)
 static u16 sPort;
 #define PORT_BASE 31470
 #define PORTS 8
 static struct sockaddr_in sPeers[8];
+HOST_STATE_KEEP(sPeers)
 static int sLan = 1;  // ACWW_NET_LAN=0: no beacons to the machine and the LAN (only the peers and the probers)
 static int sPeerCount;
+HOST_STATE_KEEP(sPeerCount)
 static struct { struct sockaddr_in addr; u64 until; } sProbers[8];
 
 enum { PK_BEACON = 1, PK_PROBE, PK_CONNECT, PK_ACCEPT, PK_REJECT, PK_DISCONNECT, PK_MP, PK_REPLY, PK_ALIVE };

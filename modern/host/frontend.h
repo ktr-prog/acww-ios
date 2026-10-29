@@ -23,7 +23,10 @@ typedef struct {
     int32_t touch_x, touch_y;
     uint32_t touch_down;
     uint32_t quit;         // set by the frontend when its window closes
-    uint32_t pad[9];
+    // the circle pad (the optional feature, host_features.h): bits 0-7 x, 8-15 y (int8, y up; 105 = a full push), bit 16
+    // set while the feature is on
+    uint32_t stick;
+    uint32_t pad[8];
     uint32_t pixels[256 * 384];  // top screen then bottom screen, 0x00RRGGBB
     // sound: a ring of stereo frames (left, right) at ACWW_AUDIO_RATE; the game advances audio_write, the frontend
     // audio_read (both count frames, the ring index is the count mod ACWW_AUDIO_FRAMES)

@@ -57,10 +57,14 @@ put it next to the `.nds` there, with the same name. Deleting the app deletes th
 (sideways) are the DS's: the D-pad (diagonals too), A, B, X, Y, L, R, Start and Select. Several buttons can be held at
 once, and a finger can slide from one button to another. Turn the device any way you like.
 
-**Save states (for testing):** SAVE stores the game exactly as it is now; LOAD goes back to that moment (it's dimmed
-until something is saved). There is one slot, and it lasts only until the app is closed: iOS loads the app at a
-different address each time, so a state can't be kept across launches. Use the game's own save to keep your
-progress. Loading a state doesn't touch the game's save file.
+**Save states:** SAVE stores the game exactly as it is now; LOAD goes back to that moment (it's dimmed until something
+is saved). There is one slot, kept in `acww-state.bin` in the app's folder, so it's still there after the app was
+closed. A new version of the app can't load an older version's state. A state saved between about 1 and 3 minutes
+after starting the app loads only until the app is closed (a message says so). Loading a state doesn't touch the
+game's save file.
+
+**MENU** opens the settings: the optional features (docs/features.md), each off until you switch it on. The first one
+is the **circle pad**: the D-pad becomes a circle pad for walking at any speed.
 
 **Game controllers** (Xbox, PlayStation, MFi and others that iOS supports): connect one in Settings > Bluetooth. The
 on-screen buttons then hide and the screens grow. A touch next to the screens brings the buttons back. The face
@@ -87,9 +91,10 @@ away) and open it again after changing it.
 
 - **The picture** is drawn by the CPU renderers at the DS's resolution, then scaled up sharply. There is no
   higher-resolution 3D (the PC's WebGPU renderer) on iOS yet.
-- **DS-to-DS play** (the gate) isn't supported on iOS. iOS doesn't let apps without Apple's special permission
-  broadcast on the local network, which is how copies find each other. Nintendo Wi-Fi Connection isn't supported
-  anywhere.
+- **DS-to-DS play** (the gate): iOS doesn't let sideloaded apps broadcast on the local network, which is how copies
+  find each other on a computer. Give the other device's address instead: `ACWW_NET_PEER=192.168.1.23` in
+  `acww-options.txt` (on both devices, each with the other's address; iOS asks once for the local network). Nintendo
+  Wi-Fi Connection isn't supported anywhere.
 - **The game's own reset** (after a broken wireless connection) closes the app with a message. Open it again.
 - There are no environment variables on iOS, so the PC's options (README.md, docs/host.md) keep their defaults.
 
@@ -133,7 +138,10 @@ python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa --sign-ad
   `modern/link/game_begin.c` and `state_end.c`, and the frontend, SDL and the save states themselves outside them. A
   save copies all of it while the game is held at a frame's end, plus where its coroutine stopped; a load puts it back
   and resumes there. `tools/ios_check.py` checks the ranges in the link map (`build/hostios_usa/acww.map`): every
-  variable of those objects inside, nobody else's. The save memory (and its file) is left alone by a load.
+  variable of those objects inside, nobody else's. The save memory (and its file) is left alone by a load. Each save
+  is also written to `acww-state.bin`: the game's blocks come from an arena at a fixed address (plat_posix.c), and a
+  load in another launch moves the pointers into the program (it is elsewhere every launch), the ROM image and, if
+  its place was taken, the arena.
 - `modern/host/early.c`: the DS memory is mapped before the game's static constructors run. ELF has constructor
   priorities for that. Mach-O doesn't (its initialisers run in the link's object order), so configure_host.py links
   `early.o` first on macOS and iOS. `tools/ios_check.py` checks the result in the program: `__mod_init_func` (plain

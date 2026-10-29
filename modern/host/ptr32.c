@@ -58,4 +58,26 @@ void *HostPtr32_Lookup(unsigned int handle) {
     return (void *)sPtrs[i];
 }
 
+// the table for a save state (savestate.c): its pointers in handle order; a loaded one replaces it
+unsigned int HostPtr32_Export(const void *const **ptrs) {
+    *ptrs = sPtrs;
+    return sCount;
+}
+void HostPtr32_Import(const void *const *ptrs, unsigned int n) {
+    sCount = 0;
+    if (n > sCap) {
+        const void **b = realloc(sPtrs, n * sizeof *sPtrs);
+        if (!b) host_fatal("HostPtr32: no memory");
+        sPtrs = b, sCap = n;
+    }
+    for (u32 i = 0; i < n; i++) sPtrs[i] = ptrs[i];
+    sCount = n;
+    u32 cap = 1024;
+    while (cap < 2 * n + 2) cap *= 2;
+    rehash(cap);
+}
+#else
+unsigned int HostPtr32_Export(const void *const **ptrs) { *ptrs = 0; return 0; }
+void HostPtr32_Import(const void *const *ptrs, unsigned int n) { (void)ptrs; (void)n; }
+
 #endif

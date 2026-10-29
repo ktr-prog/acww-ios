@@ -17,5 +17,10 @@ int ui_is_open(void);
 // the binding screen's picture over the screens (256x384, 0xAARRGGBB, straight alpha), or NULL while hidden;
 // `changed` set when it differs from the last call's
 const uint32_t *ui_overlay(int *changed);
+// the settings screen (the optional features, host_features.h): open it (iOS: the MENU button); a tap at (x, y) of the
+// overlay (256x384) while a screen is open
+void ui_open_settings(void);
+void ui_toast(const char *msg);  // a short message (capitals) shown for a few seconds over the screens
+int ui_tap(int x, int y);
 
 #endif

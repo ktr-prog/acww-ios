@@ -24,6 +24,7 @@
 #include "host.h"
 #include "host_mem.h"
 #include "plat.h"
+#include "savestate.h"
 #include "guards.h"
 #include "render.h"
 
@@ -736,6 +737,7 @@ static inline void io_access_done(void) {
 // bytes, LF line ends, on Windows too, so that two builds' files compare.)
 static int sIoTrace = -1;
 static FILE *sIoTraceFile;
+HOST_STATE_KEEP(sIoTraceFile)
 static u64 sTrHash = 0xcbf29ce484222325ull, sTrReads, sTrWrites;
 static long sTrFrom = -1, sTrTo = -1;
 static uintptr_t sTrCaller;

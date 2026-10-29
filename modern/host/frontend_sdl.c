@@ -28,6 +28,7 @@
 #if defined(__APPLE__)
 #include <SDL_metal.h>
 #endif
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,7 @@
 #include "plat.h"
 #include "render.h"
 #include "savestate.h"
+#include "host_features.h"
 #include "wgpu_display.h"
 
 // iOS (HOST_IOS; docs/ios.md): the window fills the screen and turns with the device; the screens and the on-screen
@@ -54,6 +56,8 @@ static TcState sTouch;
 static int sShowControls = 1;
 static SDL_Texture *sButtonTex[TC_COUNT][16];  // per control: [pressed] (the D-pad: [the directions held >> 4])
 static int sButtonW[TC_COUNT], sButtonH[TC_COUNT];
+static SDL_Texture *sStickBase, *sStickKnob[2];  // the circle pad (host_features.h): its base and its knob (pressed or not)
+static int sStickW;
 static SDL_Texture *sSharp;  // the screens at a whole multiple of their size, smoothed down from there
 static int sSharpK;
 static volatile int sInBackground;
@@ -271,6 +275,18 @@ AcwwShm *frontend_backend_open(const char *argv0) {
         return sShm = 0;
     }
     ui_init();
+    {   // the optional features' settings (host_features.h): on iOS in the app's folder (the working directory), else next
+        // to the key bindings
+#if HOST_IOS
+        features_init("acww-settings.txt");
+#else
+        char *dir = SDL_GetPrefPath("", "acww");
+        char path[1024];
+        snprintf(path, sizeof path, "%ssettings.txt", dir ? dir : "");
+        SDL_free(dir);
+        features_init(path);
+#endif
+    }
     open_audio();
     atexit(sdl_quit);
     return sShm;
@@ -315,6 +331,33 @@ static uint32_t pad_keys(void) {
         if (SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > DEAD) k |= 1u << 9;
     }
     return k;
+}
+
+// the circle pad (host_features.h) for the game (AcwwShm.stick): the touch one while a finger holds it, else the first
+// controller's left stick out of its dead zone; 0 while the feature is off
+static uint32_t stick_word(void) {
+    if (!feature_on(FEAT_CIRCLE_PAD)) return 0;
+    float x = 0, y = 0;
+    int got = 0;
+#if HOST_IOS
+    got = tc_stick(&sTouch, &x, &y);
+#endif
+    for (int p = 0; p < 4 && !got; p++) {
+        SDL_GameController *c = sPads[p];
+        if (!c) continue;
+        float ax = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
+        float ay = -SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
+        float m = sqrtf(ax * ax + ay * ay);
+        const float dead = 0.15f;
+        if (m <= dead) continue;
+        float k = (m > 1 ? 1 : m);
+        k = (k - dead) / (1 - dead) / m;  // (the dead zone taken out; the length at most 1)
+        x = ax * k, y = ay * k, got = 1;
+    }
+    int ix = (int)lrintf(x * 105), iy = (int)lrintf(y * 105);
+    ix = ix < -127 ? -127 : ix > 127 ? 127 : ix;
+    iy = iy < -127 ? -127 : iy > 127 ? 127 : iy;
+    return (uint32_t)(ix & 0xff) | (uint32_t)(iy & 0xff) << 8 | 1u << 16;
 }
 
 static void pad_added(int index) {
@@ -403,6 +446,17 @@ static void handle(const SDL_Event *e) {
     if (e->type == SDL_QUIT) { sShm->quit = 1; return; }
     if (e->type == SDL_CONTROLLERDEVICEADDED) { pad_added(e->cdevice.which); return; }
     if (e->type == SDL_CONTROLLERDEVICEREMOVED) { pad_removed(e->cdevice.which); return; }
+#if HOST_IOS
+    // a settings or binding screen open: a finger or a click picks its line (the screen covers the screens' place)
+    if (ui_is_open() && (e->type == SDL_FINGERDOWN || (e->type == SDL_MOUSEBUTTONDOWN && e->button.which != SDL_TOUCH_MOUSEID))) {
+        float px = e->type == SDL_FINGERDOWN ? e->tfinger.x * (float)sLayout.w : (float)e->button.x * sPt;
+        float py = e->type == SDL_FINGERDOWN ? e->tfinger.y * (float)sLayout.h : (float)e->button.y * sPt;
+        TcRect sc = sLayout.screens;
+        if (sc.w > 0 && sc.h > 0) ui_tap((int)((px - sc.x) * 256 / sc.w), (int)((py - sc.y) * 384 / sc.h));
+        tc_reset(&sTouch);
+        return;
+    }
+#endif
     if (ui_event(e)) {
         sMouse.held = sFinger.held = 0;
 #if HOST_IOS
@@ -447,6 +501,12 @@ static void handle(const SDL_Event *e) {
         } else if (e->key.keysym.scancode == SDL_SCANCODE_RETURN && (e->key.keysym.mod & KMOD_ALT)) {
             int full = (SDL_GetWindowFlags(sWin) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
             SDL_SetWindowFullscreen(sWin, full ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+        } else if (e->key.keysym.scancode == SDL_SCANCODE_F5 && !ui_key_bound(SDL_SCANCODE_F5)) {
+            host_state_save(&sGameSp);  // (the save state: here the game is held, as for the iOS buttons)
+            ui_toast(host_state_message());
+        } else if (e->key.keysym.scancode == SDL_SCANCODE_F9 && !ui_key_bound(SDL_SCANCODE_F9)) {
+            host_state_load(&sGameSp);
+            ui_toast(host_state_message());
         } else if (e->key.keysym.scancode == SDL_SCANCODE_M && !ui_key_bound(SDL_SCANCODE_M)) {
             __atomic_store_n(&sMute, !sMute, __ATOMIC_RELAXED);
         }
@@ -590,6 +650,7 @@ static void ios_layout(void) {
     int changed = ow != sLayout.w || oh != sLayout.h || sShowControls != sLayout.controls;
     if (changed) tc_reset(&sTouch);
     tc_layout(&sLayout, ow, oh, sPt, in, sShowControls);
+    sLayout.stick = feature_on(FEAT_CIRCLE_PAD);
     if (changed)
         fprintf(stderr, "frontend: window %dx%d px (%.0fx scale), safe area %.0f,%.0f,%.0f,%.0f px, screens %.0f,%.0f %.0fx%.0f, "
                 "buttons %s\n", ow, oh, sPt, in[0], in[1], in[2], in[3], sLayout.screens.x, sLayout.screens.y,
@@ -619,12 +680,55 @@ static void ios_stats(void) {
 }
 
 // the controls, each from a texture made once per size and look (touch_controls.c draws them)
+// a picture of the given size as a texture (0 if it can't be made)
+static SDL_Texture *control_texture(int w, int h, uint32_t *px) {
+    SDL_Texture *t = SDL_CreateTexture(sRen, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, h);
+    if (t) {
+        SDL_UpdateTexture(t, 0, px, w * 4);
+        SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
+    }
+    return t;
+}
+// the circle pad in the D-pad's place: its base, and its knob moved by the finger's push
+static void ios_draw_stick(TcRect r) {
+    int w = (int)(r.w + 0.5f), kw = (int)(r.w * TC_KNOB + 0.5f);
+    if (w <= 0 || kw <= 0) return;
+    if (w != sStickW) {
+        if (sStickBase) SDL_DestroyTexture(sStickBase);
+        for (int i = 0; i < 2; i++)
+            if (sStickKnob[i]) SDL_DestroyTexture(sStickKnob[i]);
+        sStickBase = sStickKnob[0] = sStickKnob[1] = 0;
+        sStickW = w;
+        uint32_t *px = malloc((size_t)w * (size_t)w * 4);
+        if (!px) return;
+        tc_draw_stick_base(px, w, w);
+        sStickBase = control_texture(w, w, px);
+        for (int i = 0; i < 2; i++) {
+            tc_draw_stick_knob(px, kw, kw, i);
+            sStickKnob[i] = control_texture(kw, kw, px);
+        }
+        free(px);
+    }
+    float sx, sy;
+    int held = tc_stick(&sTouch, &sx, &sy);
+    SDL_Rect dst = {(int)(r.x + 0.5f), (int)(r.y + 0.5f), w, w};
+    if (sStickBase) SDL_RenderCopy(sRen, sStickBase, 0, &dst);
+    float cx = r.x + r.w / 2 + sx * r.w * TC_KNOB_TRAVEL, cy = r.y + r.h / 2 - sy * r.w * TC_KNOB_TRAVEL;
+    SDL_Rect k = {(int)(cx - kw / 2.0f + 0.5f), (int)(cy - kw / 2.0f + 0.5f), kw, kw};
+    if (sStickKnob[held]) SDL_RenderCopy(sRen, sStickKnob[held], 0, &k);
+}
+
 static void ios_draw_controls(void) {
     uint32_t held = tc_held(&sTouch), dirs = tc_dpad_dirs(&sTouch);
     for (int b = 0; b < TC_COUNT; b++) {
         TcRect r = sLayout.button[b];
         int w = (int)(r.w + 0.5f), h = (int)(r.h + 0.5f);
         if (w <= 0 || h <= 0) continue;
+        if (b == TC_DPAD && sLayout.stick) {
+            ios_draw_stick(r);
+            continue;
+        }
         if (w != sButtonW[b] || h != sButtonH[b]) {
             for (int v = 0; v < 16; v++) {
                 if (sButtonTex[b][v]) SDL_DestroyTexture(sButtonTex[b][v]);
@@ -660,9 +764,15 @@ static void ios_states(void) {
     static uint32_t was;
     uint32_t held = tc_held(&sTouch), pressed = held & ~was;
     was = held;
-    if (pressed & 1u << TC_SAVE && !host_state_save(&sGameSp)) fprintf(stderr, "frontend: state not saved\n");
-    if (pressed & 1u << TC_LOAD && host_state_have() && !host_state_load(&sGameSp))
-        fprintf(stderr, "frontend: state not loaded\n");
+    if (pressed & 1u << TC_SAVE) {
+        if (!host_state_save(&sGameSp)) fprintf(stderr, "frontend: state not saved\n");
+        ui_toast(host_state_message());
+    }
+    if (pressed & 1u << TC_LOAD && host_state_have()) {
+        if (!host_state_load(&sGameSp)) fprintf(stderr, "frontend: state not loaded\n");
+        ui_toast(host_state_message());
+    }
+    if (pressed & 1u << TC_MENU) ui_open_settings();
 }
 
 // the frame: the screens in their place - drawn at a whole multiple of the DS's pixels (sharp), then smoothed to the
@@ -786,8 +896,10 @@ static void frame_body(void) {
     ios_stats();
     ios_states();
     sShm->keys = keyboard_keys() | pad_keys() | tc_keys(&sTouch);
+    sShm->stick = stick_word();
 #else
     sShm->keys = keyboard_keys() | pad_keys();
+    sShm->stick = stick_word();
 #endif
     update_touch();
     show();

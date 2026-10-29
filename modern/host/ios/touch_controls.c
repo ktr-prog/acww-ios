@@ -66,6 +66,11 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
         float lcx = maxf(sx + sw * 0.25f, sx + m + k / 2), rcx = minf(sx + sw * 0.75f, sx + sw - m - k / 2);
         l->button[TC_DPAD] = square_at(lcx, cy, k * 0.92f);
         face_buttons(l, rcx, cy, k);
+        // Menu: a pill between them at the bottom (right of the D-pad, left of B)
+        float gx0 = lcx + k * 0.46f + gap, gx1 = rcx - k * 0.19f - gap;
+        float mw = minf(ssw, gx1 - gx0), mh = ssh;
+        if (mw < ssh * 1.2f) mw = ssh * 1.2f;  // (narrow phones: it may reach under the D-pad's corner)
+        l->button[TC_MENU] = rect((gx0 + gx1) / 2 - mw / 2, minf(cy + k * 0.46f, aBottom) - mh, mw, mh);
     } else {
         // on its side: the screens in the middle, the controls left and right of them
         const float minSide = 150 * pt;
@@ -90,11 +95,14 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
             // (two small buttons side by side at the bottom: Save and Start on the left, Select and Load on the right)
             TcRect small = rect(cx - ssw - gap / 2, p.y + p.h - m - ssh, 2 * ssw + gap, ssh);
             TcRect smallA = rect(small.x, small.y, ssw, ssh), smallB = rect(small.x + ssw + gap, small.y, ssw, ssh);
-            float aTop = shoulder.y + rh + m, aBottom = small.y - m, ah = aBottom - aTop;
+            // (Menu: a small pill below L on the left; the D-pad and the face buttons below it, level with each other)
+            TcRect menu = rect(cx - ssw / 2, shoulder.y + rh + m * 0.75f, ssw, ssh);
+            float aTop = menu.y + ssh + m * 0.75f, aBottom = small.y - m, ah = aBottom - aTop;
             float k = minf(minf(ah, pw), 260 * pt);
             float cy = aTop + ah / 2;
             if (s == 0) {
                 l->button[TC_L] = shoulder, l->button[TC_SAVE] = smallA, l->button[TC_START] = smallB;
+                l->button[TC_MENU] = menu;
                 l->button[TC_DPAD] = square_at(cx, cy, k * 0.92f);
             } else {
                 l->button[TC_R] = shoulder, l->button[TC_SELECT] = smallA, l->button[TC_LOAD] = smallB;
@@ -108,7 +116,7 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
 
 static const uint32_t kBit[TC_COUNT] = {
     [TC_A] = 1u << 0, [TC_B] = 1u << 1, [TC_X] = 1u << 10, [TC_Y] = 1u << 11, [TC_L] = 1u << 9, [TC_R] = 1u << 8,
-    [TC_START] = 1u << 3, [TC_SELECT] = 1u << 2, [TC_SAVE] = 0, [TC_LOAD] = 0, [TC_DPAD] = 0,
+    [TC_START] = 1u << 3, [TC_SELECT] = 1u << 2, [TC_SAVE] = 0, [TC_LOAD] = 0, [TC_MENU] = 0, [TC_DPAD] = 0,
 };
 enum { WHAT_STYLUS = -1, WHAT_NOTHING = -2, WHAT_SLIDING = TC_COUNT };  // (sliding: a button finger between buttons)
 enum { DIR_RIGHT = 1u << 4, DIR_LEFT = 1u << 5, DIR_UP = 1u << 6, DIR_DOWN = 1u << 7 };
@@ -128,6 +136,30 @@ static uint32_t dpad_dirs(const TcLayout *l, float x, float y) {
     if (a > 117.5f || a < -117.5f) k |= DIR_LEFT;
     if (a > -152.5f && a < -27.5f) k |= DIR_DOWN;
     return k;
+}
+
+// the circle pad for a point: its position (-1..1, y up, length at most 1; 0 in the dead zone) and the D-pad
+// directions it holds (pushed past STICK_DPAD: eight directions of 45 degrees, the diagonals two bits)
+#define STICK_DEAD 0.12f
+#define STICK_DPAD 0.40f
+static uint32_t stick_at(const TcLayout *l, float x, float y, float *sx, float *sy) {
+    TcRect r = l->button[TC_DPAD];
+    float range = r.w * TC_KNOB_TRAVEL;  // (the knob's travel: full deflection where the knob stops)
+    float dx = (x - (r.x + r.w / 2)) / range, dy = ((r.y + r.h / 2) - y) / range;
+    float m = sqrtf(dx * dx + dy * dy);
+    if (m > 1) dx /= m, dy /= m, m = 1;
+    if (m < STICK_DEAD) { *sx = *sy = 0; return 0; }
+    // (the dead zone taken out: the length grows from 0 at its edge)
+    float k = (m - STICK_DEAD) / (1 - STICK_DEAD) / m;
+    *sx = dx * k, *sy = dy * k;
+    if (m < STICK_DPAD) return 0;
+    float a = atan2f(dy, dx) * (180.0f / 3.14159265f);
+    uint32_t keys = 0;
+    if (a > -67.5f && a < 67.5f) keys |= DIR_RIGHT;
+    if (a > 22.5f && a < 157.5f) keys |= DIR_UP;
+    if (a > 112.5f || a < -112.5f) keys |= DIR_LEFT;
+    if (a > -157.5f && a < -22.5f) keys |= DIR_DOWN;
+    return keys;
 }
 
 // the button (not the D-pad) under a point, with some room around each: the nearest one whose area holds it
@@ -175,7 +207,10 @@ int tc_pointer(TcState *s, const TcLayout *l, int64_t id, int event, float x, fl
     int i = 0;
     while (i < TC_MAX_POINTERS && !(s->p[i].used && s->p[i].id == id)) i++;
     if (event == TC_UP) {
-        if (i < TC_MAX_POINTERS) memset(&s->p[i], 0, sizeof s->p[i]);
+        if (i < TC_MAX_POINTERS) {
+            if (s->p[i].what == TC_DPAD) s->stick_x = s->stick_y = 0;  // (the circle pad springs back)
+            memset(&s->p[i], 0, sizeof s->p[i]);
+        }
         return 0;
     }
     if (i == TC_MAX_POINTERS) {
@@ -201,7 +236,11 @@ int tc_pointer(TcState *s, const TcLayout *l, int64_t id, int event, float x, fl
     if (w == WHAT_STYLUS) {
         stylus_point(s, l, x, y);
     } else if (w == TC_DPAD) {
-        s->p[i].keys = dpad_dirs(l, x, y);
+        if (l->stick) {
+            s->p[i].keys = stick_at(l, x, y, &s->stick_x, &s->stick_y);
+        } else {
+            s->p[i].keys = dpad_dirs(l, x, y);
+        }
     } else if (w >= 0) {  // a button finger: whichever button it is on now
         int b = button_at(l, x, y);
         s->p[i].what = b >= 0 ? b : WHAT_SLIDING;
@@ -232,6 +271,16 @@ uint32_t tc_held(const TcState *s) {
     return h;
 }
 
+int tc_stick(const TcState *s, float *x, float *y) {
+    for (int i = 0; i < TC_MAX_POINTERS; i++)
+        if (s->p[i].used && s->p[i].what == TC_DPAD) {
+            *x = s->stick_x, *y = s->stick_y;
+            return 1;
+        }
+    *x = *y = 0;
+    return 0;
+}
+
 uint32_t tc_dpad_dirs(const TcState *s) {
     uint32_t k = 0;
     for (int i = 0; i < TC_MAX_POINTERS; i++)
@@ -250,6 +299,8 @@ static const struct { char c; const char *rows; } kFont[] = {
     {'L', "#....#....#....#....#....#....#####"}, {'R', "####.#...##...#####.#.#..#..#.#...#"},
     {'S', ".#####....#.....###.....#....#####."}, {'T', "#####..#....#....#....#....#....#.."},
     {'X', "#...##...#.#.#...#...#.#.#...##...#"}, {'Y', "#...##...#.#.#...#....#....#....#.."},
+    {'M', "#...###.###.#.##.#.##...##...##...#"}, {'N', "#...##...###..##.#.##..###...##...#"},
+    {'U', "#...##...##...##...##...##...#.###."},
 };
 
 // src over dst, both straight alpha (0xAARRGGBB); a: src's alpha (0..1) times its colour's
@@ -336,7 +387,8 @@ static void label(uint32_t *px, int w, int h, const char *text, float alpha) {
 }
 
 void tc_draw(uint32_t *px, int w, int h, int which, int pressed, uint32_t dirs) {
-    static const char *const kLabel[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "SAVE", "LOAD", ""};
+    static const char *const kLabel[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "SAVE", "LOAD", "MENU",
+                                                 ""};
     memset(px, 0, (size_t)w * h * 4);
     if (w <= 2 || h <= 2) return;
     float rim = maxf(1.5f, minf((float)w, (float)h) * (which == TC_DPAD ? 0.025f : 0.05f));
@@ -359,4 +411,35 @@ void tc_draw(uint32_t *px, int w, int h, int which, int pressed, uint32_t dirs) 
         }
     }
     if (which != TC_DPAD) label(px, w, h, kLabel[which], pressed ? 1.0f : 0.85f);
+}
+
+// the circle pad: a ring with a dimmer middle (its base) and a solid round knob
+void tc_draw_stick_base(uint32_t *px, int w, int h) {
+    memset(px, 0, (size_t)w * h * 4);
+    if (w <= 2 || h <= 2) return;
+    float cx = w / 2.0f, cy = h / 2.0f, R = minf((float)w, (float)h) / 2 - 1;
+    float rim = maxf(1.5f, R * 0.05f);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            float d = len2(x + 0.5f - cx, y + 0.5f - cy) - R;
+            float cover = clampf(0.5f - d, 0, 1);
+            if (cover <= 0) continue;
+            float a = 0.14f + (0.55f - 0.14f) * clampf(d + rim + 0.5f, 0, 1);
+            blend(&px[y * w + x], 0xffffff, a * cover);
+        }
+}
+void tc_draw_stick_knob(uint32_t *px, int w, int h, int pressed) {
+    memset(px, 0, (size_t)w * h * 4);
+    if (w <= 2 || h <= 2) return;
+    float cx = w / 2.0f, cy = h / 2.0f, R = minf((float)w, (float)h) / 2 - 1;
+    float rim = maxf(1.5f, R * 0.08f);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            float d = len2(x + 0.5f - cx, y + 0.5f - cy) - R;
+            float cover = clampf(0.5f - d, 0, 1);
+            if (cover <= 0) continue;
+            float a0 = pressed ? 0.62f : 0.40f;
+            float a = a0 + (0.75f - a0) * clampf(d + rim + 0.5f, 0, 1);
+            blend(&px[y * w + x], 0xffffff, a * cover);
+        }
 }
