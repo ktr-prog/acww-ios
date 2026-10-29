@@ -3,9 +3,9 @@
 // draws and feeds them; modern/host/ios/tests/ checks them on any machine.
 //
 // The layout: the DS's two screens (256x384 together) as large as they fit with the buttons beside them - below them
-// when the window is upright (L, Select, Start, R in a row, then the D-pad on the left and A/B/X/Y on the right),
-// left and right of them when it lies on its side (L, the D-pad and Select on the left; R, A/B/X/Y and Start on the
-// right). Without the buttons (a game controller is connected) the screens fill the safe area.
+// when the window is upright (L, Save, Start, Select, Load, R in a row, then the D-pad on the left and A/B/X/Y on the
+// right), left and right of them when it lies on its side (L, the D-pad, Save and Start on the left; R, A/B/X/Y,
+// Select and Load on the right). Without the buttons (a game controller is connected) the screens fill the safe area.
 // Touch: a finger that lands on the bottom screen is the stylus (one at a time); one that lands on a button holds it
 // and may slide to another (the D-pad: the direction from its centre, diagonals too); the top screen does nothing.
 #ifndef HOST_IOS_TOUCH_CONTROLS_H
@@ -18,7 +18,8 @@ extern "C" {
 #endif
 
 // the controls; each is drawn from its own picture (tc_draw)
-enum { TC_A, TC_B, TC_X, TC_Y, TC_L, TC_R, TC_START, TC_SELECT, TC_DPAD, TC_COUNT };
+// (SAVE / LOAD: the frontend's save state, not DS buttons: no key bits)
+enum { TC_A, TC_B, TC_X, TC_Y, TC_L, TC_R, TC_START, TC_SELECT, TC_SAVE, TC_LOAD, TC_DPAD, TC_COUNT };
 
 typedef struct { float x, y, w, h; } TcRect;
 

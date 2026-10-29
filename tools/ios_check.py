@@ -6,9 +6,15 @@
 - a 64-bit arm64 Mach-O executable for iOS (LC_BUILD_VERSION platform iOS), with an entry point;
 - modern/host/early.c's early_init is the first static initialiser: it maps the DS memory, which the game's static
   constructors may touch, and Mach-O runs initialisers in the link's object order (configure_host.py puts early.o
-  first). Read from __mod_init_func (plain pointers or chained fixups) or __init_offsets, whichever the linker wrote.
+  first). Read from __mod_init_func (plain pointers or chained fixups) or __init_offsets, whichever the linker wrote;
+- the save states' ranges (modern/host/savestate.c), from the link map next to the program (acww.map, which
+  configure_host.py has the linker write) and objects.txt: in each writable section, the variables of the objects
+  from modern/link/game_begin.o to state_end.o (the game and the runtime's DS) lie between the section's two markers,
+  and nobody else's (the frontend's, SDL's, the C library's) do.
 Exit status 0 if all is well. Standard library only.
 """
+import os
+import re
 import struct
 import sys
 
@@ -100,7 +106,101 @@ def main():
         fail(f"the first initialiser ({where}) is at {first:#x}, not early_init ({early:#x}): the DS memory would be "
              "mapped after the game's static constructors run")
     print(f"ios_check.py: early_init ({early:#x}) is the first initialiser ({where})")
+    check_state(os.path.join(os.path.dirname(sys.argv[1]), "acww.map"),
+                os.path.join(os.path.dirname(sys.argv[1]), "objects.txt"))
     print("ios_check.py: all good")
+
+
+# the save states' markers: the first and the last variable of the state in the section each lands in
+STATE_MARKERS = [("_gHostGameDataBegin", "_gHostStateDataEnd"), ("_gHostGameBssBegin", "_gHostStateBssEnd"),
+                 ("_sGameStaticBssBegin", "_sStateStaticBssEnd")]
+
+
+def check_state(map_path, objects_path):
+    if not os.path.exists(map_path) or not os.path.exists(objects_path):
+        fail(f"no link map ({map_path}) or object list ({objects_path}): the save states' ranges can't be checked")
+    objs = [l.strip() for l in open(objects_path) if l.strip()]
+    first = [i for i, o in enumerate(objs) if o.endswith("modern/link/game_begin.o")]
+    last = [i for i, o in enumerate(objs) if o.endswith("modern/link/state_end.o")]
+    if not first or not last or first[0] > last[0]:
+        fail("objects.txt: no game_begin.o ... state_end.o run")
+    state_objs = {os.path.normpath(o) for o in objs[first[0]:last[0] + 1]}
+    files, sects, syms, mode = {}, [], [], None
+    for line in open(map_path, errors="replace"):
+        line = line.rstrip("\n")
+        if line.startswith("# Object files:"):
+            mode = "obj"
+        elif line.startswith("# Sections:"):
+            mode = "sec"
+        elif line.startswith("# Symbols:"):
+            mode = "sym"
+        elif line.startswith("# Dead Stripped"):
+            mode = None
+        elif line.startswith("#") or not line.strip():
+            continue
+        elif mode == "obj":
+            m = re.match(r"\[\s*(\d+)\]\s+(.*)$", line)
+            if m:
+                files[int(m.group(1))] = os.path.normpath(m.group(2))
+        elif mode == "sec":
+            p = line.split()
+            if len(p) >= 4:
+                sects.append((int(p[0], 16), int(p[1], 16), p[2], p[3]))
+        elif mode == "sym":
+            m = re.match(r"(0x[0-9A-Fa-f]+)\s+(0x[0-9A-Fa-f]+)\s+\[\s*(\d+)\]\s+(.*)$", line)
+            if m:
+                syms.append((int(m.group(1), 16), int(m.group(2), 16), int(m.group(3)), m.group(4)))
+    if not files or not sects or not syms:
+        fail(f"{map_path}: not a link map in the expected format")
+
+    def section_of(a):
+        for addr, size, seg, sect in sects:
+            if addr <= a < addr + max(size, 1):
+                return seg, sect
+        return None
+
+    by_name = {n: a for a, _, _, n in syms}
+    ranges = {}  # section -> (lo, hi)
+    for lo_name, hi_name in STATE_MARKERS:
+        if lo_name not in by_name or hi_name not in by_name:
+            fail(f"{map_path}: no {lo_name} / {hi_name}")
+        lo, hi = by_name[lo_name], by_name[hi_name]
+        sl, sh = section_of(lo), section_of(hi)
+        if sl != sh or not sl:
+            fail(f"{lo_name} ({sl}) and {hi_name} ({sh}) aren't in one section")
+        if not lo < hi:
+            fail(f"{lo_name} {lo:#x} isn't below {hi_name} {hi:#x}")
+        if sl in ranges:  # (two pairs in one section: the union, if they meet)
+            plo, phi = ranges[sl]
+            if hi < plo or lo > phi:
+                fail(f"two separate state ranges in {sl}")
+            lo, hi = min(lo, plo), max(hi, phi)
+        ranges[sl] = (lo, hi)
+    bad, counts = [], {}
+    for a, size, idx, name in syms:
+        sec = section_of(a)
+        if not sec or sec[0] != "__DATA" or sec[1] in ("__la_symbol_ptr", "__got", "__thread_ptrs") or \
+                sec[1].startswith("__objc_"):
+            continue
+        mine = files.get(idx) in state_objs
+        if sec not in ranges:
+            if mine:
+                bad.append(f"{name} ({files.get(idx)}) in {sec[0]},{sec[1]}, which has no state range")
+            continue
+        lo, hi = ranges[sec]
+        inside = lo <= a <= hi
+        counts[sec] = counts.get(sec, 0) + mine
+        if mine and not inside:
+            bad.append(f"{name} ({files.get(idx)}) at {a:#x}, outside the state range of {sec[1]} ({lo:#x}-{hi:#x})")
+        elif not mine and inside:
+            bad.append(f"{name} ({files.get(idx)}) at {a:#x}, inside the state range of {sec[1]} ({lo:#x}-{hi:#x})")
+    if bad:
+        for b in bad[:30]:
+            print(f"ios_check.py:   {b}")
+        fail(f"{len(bad)} variables on the wrong side of the save states' ranges")
+    for sec, (lo, hi) in sorted(ranges.items(), key=lambda kv: kv[1]):
+        print(f"ios_check.py: save state range {sec[0]},{sec[1]} {lo:#x}-{hi:#x} ({(hi - lo) >> 10} KB, "
+              f"{counts.get(sec, 0)} variables): only the game's and the runtime's DS's")
 
 
 if __name__ == "__main__":

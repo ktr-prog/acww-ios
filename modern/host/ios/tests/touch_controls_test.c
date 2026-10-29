@@ -52,7 +52,7 @@ static int overlap_controls(int i, int j, TcRect a, TcRect b) {
 static float cx(TcRect r) { return r.x + r.w / 2; }
 static float cy(TcRect r) { return r.y + r.h / 2; }
 
-static const char *kName[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "DPAD"};
+static const char *kName[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "SAVE", "LOAD", "DPAD"};
 
 static void write_preview(const char *dir, const char *dev, const char *orient, int controls, const TcLayout *l,
                           float pt, const float safe[4]) {
@@ -152,7 +152,7 @@ static void check_touch(void) {
     tc_layout(&l, w, h, pt, safe, 1);
     TcState s;
     tc_reset(&s);
-    static const uint32_t kBits[] = {1u << 0, 1u << 1, 1u << 10, 1u << 11, 1u << 9, 1u << 8, 1u << 3, 1u << 2};
+    static const uint32_t kBits[] = {1u << 0, 1u << 1, 1u << 10, 1u << 11, 1u << 9, 1u << 8, 1u << 3, 1u << 2, 0, 0};
     for (int b = 0; b < TC_DPAD; b++) {
         tc_pointer(&s, &l, 7, TC_DOWN, cx(l.button[b]), cy(l.button[b]));
         CHECK(tc_keys(&s) == kBits[b], "button %s gives keys %#x", kName[b], tc_keys(&s));

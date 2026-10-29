@@ -57,6 +57,11 @@ put it next to the `.nds` there, with the same name. Deleting the app deletes th
 (sideways) are the DS's: the D-pad (diagonals too), A, B, X, Y, L, R, Start and Select. Several buttons can be held at
 once, and a finger can slide from one button to another. Turn the device any way you like.
 
+**Save states (for testing):** SAVE stores the game exactly as it is now; LOAD goes back to that moment (it's dimmed
+until something is saved). There is one slot, and it lasts only until the app is closed: iOS loads the app at a
+different address each time, so a state can't be kept across launches. Use the game's own save to keep your
+progress. Loading a state doesn't touch the game's save file.
+
 **Game controllers** (Xbox, PlayStation, MFi and others that iOS supports): connect one in Settings > Bluetooth. The
 on-screen buttons then hide and the screens grow. A touch next to the screens brings the buttons back. The face
 buttons are by position, as on the DS (right = A, bottom = B, top = X, left = Y). The left stick also works as the
@@ -122,6 +127,13 @@ python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa --sign-ad
   background (iOS doesn't allow drawing there). The frontend runs on the main thread's own stack: main.c switches to
   the game's stack and the game switches back at each frame (`frontend_backend_main_loop`), so UIKit, SDL and Metal
   never run on a coroutine stack.
+- Save states (`modern/host/savestate.c`): the game's whole state is memory of the process: the game's variables, the
+  runtime's DS (memory, hardware, OS, sound, renderers), the page blocks the game's memory lives in and the game
+  threads' stacks. configure_host.py links the game's objects and those runtime objects between
+  `modern/link/game_begin.c` and `state_end.c`, and the frontend, SDL and the save states themselves outside them. A
+  save copies all of it while the game is held at a frame's end, plus where its coroutine stopped; a load puts it back
+  and resumes there. `tools/ios_check.py` checks the ranges in the link map (`build/hostios_usa/acww.map`): every
+  variable of those objects inside, nobody else's. The save memory (and its file) is left alone by a load.
 - `modern/host/early.c`: the DS memory is mapped before the game's static constructors run. ELF has constructor
   priorities for that. Mach-O doesn't (its initialisers run in the link's object order), so configure_host.py links
   `early.o` first on macOS and iOS. `tools/ios_check.py` checks the result in the program: `__mod_init_func` (plain

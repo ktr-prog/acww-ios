@@ -120,6 +120,10 @@ extern unsigned char gHostWramArena[32];
 // modern/link/game_begin.c and game_end.c, the first and last of the game's objects in the link (linkers keep the
 // input order within .data and .bss). Its read-only data (and, in PIE builds, .data.rel.ro) lies elsewhere.
 extern char gHostGameDataBegin[1], gHostGameDataEnd[1], gHostGameBssBegin[1], gHostGameBssEnd[1];
+// (Mach-O: the static zero-initialised variables are in a section of their own, __bss - the external ones in
+// __common -, between these; elsewhere a part of the range above)
+char *host_game_static_bss_begin(void);
+char *host_game_static_bss_end(void);
 
 // is [p, p + n) inside one of the blocks above, the game's data and bss, or (64-bit hosts) the root heap's block?
 int HostMem_IsGameRam(const void *p, unsigned int n);

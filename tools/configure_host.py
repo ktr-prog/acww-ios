@@ -310,6 +310,8 @@ if MAC:
     LINK_FLAGS = SAN_FLAGS.replace(" -DHOST_ASAN", "")
     if IOS:
         HOST_FLAGS += " -DHOST_IOS=1"
+        # (the link map: tools/ios_check.py checks the save states' ranges in it)
+        LINK_FLAGS += f" -Wl,-map,{build.as_posix()}/acww.map"
     HOST_CXX_FLAGS = "-O1 -g -ffp-contract=off -std=c++17 -DHOST" + SAN_FLAGS
     MELON_LIBS = ""
 elif A64:
@@ -504,6 +506,8 @@ def main():
         n.build(str(build / "overlay_table.o"), "hostcc", "modern/gen/overlay_table.c",
                 variables={"flags": "-Imodern/host"})
         host_objs.append(str(build / "overlay_table.o"))
+        state_end = Path(build / "modern/link/state_end.o").as_posix()
+        n.build(state_end, "cc", "modern/link/state_end.c")
         if args.guards:
             # the guard variant (a debugging build; GNU ld): the game linked into one object first (its data,
             # read-only data and bss as the sections gdata, .rodata and gbss), whose map tools/host_guards.py reads,
@@ -524,9 +528,19 @@ def main():
                     variables={"list": str(game_list), "order": guard_ld})
             n.build(str(build / "guard_table.o"), "hostcc", guard_c, variables={"flags": "-Imodern/host"})
             host_objs.append(str(build / "guard_table.o"))
-            link_objs = [str(build / "game_all.o")] + host_objs
+            # (no save states here: savestate.c finds the range wrong and says so)
+            link_objs = [str(build / "game_all.o")] + host_objs + [state_end]
         else:
-            link_objs = game_objs + host_objs
+            # the save states' range (modern/host/savestate.c): the game's objects, then the runtime's that hold the
+            # DS's state, then modern/link/state_end.c; the frontend (SDL), the platform layer, the debugging aids,
+            # HostPtr32's table (it only grows: a handle stays valid whatever is loaded) and the save states
+            # themselves after it
+            outside = {"frontend_sdl.o", "frontend_ui.o", "frontend_viewer.o", "frontend_none.o", "plat_posix.o",
+                       "plat_win32.o", "plat_common.o", "debug_posix.o", "guards.o", "early.o", "coro.o",
+                       "coro_switch.o", "ptr32.o", "savestate.o", "melon.o", "melon_platform.o", "melon_none.o"}
+            out = [o for o in host_objs if "/modern/host/ios/" in o or
+                   ("/modern/host/" in o and Path(o).name in outside)]
+            link_objs = game_objs + [o for o in host_objs if o not in out] + [state_end] + out
         if MAC:
             # Mach-O runs the initialisers in the order of the objects in the link (no priorities across objects):
             # modern/host/early.c's, which maps the DS memory, first - before the game's static constructors

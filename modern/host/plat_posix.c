@@ -15,6 +15,7 @@
 #endif
 
 #include "plat.h"
+#include "savestate.h"
 
 uint64_t host_plat_time_ns(void) {
     struct timespec t;
@@ -92,11 +93,13 @@ void *host_plat_stack_alloc(size_t n, int flags) {
     unsigned char *p = mmap(0, n + page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (p == MAP_FAILED) return 0;
     mprotect(p, page, PROT_NONE);
+    host_state_track(p + page, n);  // (a game thread's stack: savestate.c)
     return p + page;
 }
 
 void host_plat_stack_free(void *stack, size_t n) {
     if (!stack) return;
+    host_state_untrack(stack);
     size_t page = page_size();
     n = (n + page - 1) & ~(page - 1);
     munmap((unsigned char *)stack - page, n + page);
@@ -104,7 +107,9 @@ void host_plat_stack_free(void *stack, size_t n) {
 
 void *host_plat_pages_alloc(size_t n) {
     void *p = mmap(0, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    return p == MAP_FAILED ? 0 : p;
+    if (p == MAP_FAILED) return 0;
+    host_state_track(p, n);  // (the game's memory: savestate.c)
+    return p;
 }
 
 int host_plat_image_bounds(uintptr_t *lo, uintptr_t *hi) {

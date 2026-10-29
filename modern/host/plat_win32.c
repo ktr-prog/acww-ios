@@ -8,6 +8,7 @@
 #include <process.h>
 
 #include "plat.h"
+#include "savestate.h"
 
 uint64_t host_plat_time_ns(void) {
     static LARGE_INTEGER freq;
@@ -92,16 +93,20 @@ void *host_plat_stack_alloc(size_t n, int flags) {
     if (!p) return 0;
     DWORD old;
     VirtualProtect(p, page, PAGE_NOACCESS, &old);
+    host_state_track(p + page, n);  // (a game thread's stack: savestate.c)
     return p + page;
 }
 
 void host_plat_stack_free(void *stack, size_t n) {
     (void)n;
+    host_state_untrack(stack);
     if (stack) VirtualFree((unsigned char *)stack - page_size(), 0, MEM_RELEASE);
 }
 
 void *host_plat_pages_alloc(size_t n) {
-    return VirtualAlloc(0, n, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    void *p = VirtualAlloc(0, n, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    host_state_track(p, n);  // (the game's memory: savestate.c)
+    return p;
 }
 
 int host_plat_image_bounds(uintptr_t *lo, uintptr_t *hi) {

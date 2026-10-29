@@ -12,6 +12,7 @@
 #include "host.h"
 #include "host_mem.h"
 #include "plat.h"
+#include "savestate.h"
 #include "sys/CardCmd.h"
 
 #define FIFOCNT 0x04000184u
@@ -279,7 +280,17 @@ static u32 sSaveSize;
 static const char *sSavePath;
 static FILE *sSaveFile;
 
+// (a save state's load leaves the save memory alone - its buffer and its file: the game's save on disk isn't rolled
+// back with the state; savestate.c)
+static void save_keep(void) {
+    host_state_keep(&sSave, sizeof sSave);
+    host_state_keep(&sSaveSize, sizeof sSaveSize);
+    host_state_keep(&sSavePath, sizeof sSavePath);
+    host_state_keep(&sSaveFile, sizeof sSaveFile);
+}
+
 static void save_load(u32 size) {
+    save_keep();
     if (sSave && size <= sSaveSize) return;
     sSave = realloc(sSave, size);
     memset(sSave + sSaveSize, 0xff, size - sSaveSize);
@@ -294,6 +305,7 @@ static void save_load(u32 size) {
 }
 // write a changed range through to the file (the whole memory when the file is new)
 static void save_store(u32 at, u32 len) {
+    save_keep();
     if (!sSavePath || at >= sSaveSize) return;
     if (!sSaveFile) {
         sSaveFile = fopen(sSavePath, "w+b");

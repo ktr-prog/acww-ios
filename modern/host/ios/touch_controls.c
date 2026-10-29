@@ -47,18 +47,18 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
         if (scw > sw) scw = sw, sch = scw * 1.5f;
         l->screens = rect(sx + (sw - scw) / 2, sy, scw, sch);
         float top = sy + sch, bottom = sy + sh, ch = bottom - top;
-        // the row: L, Select, Start, R
+        // the row: L, Save, Start, Select, Load, R
         float rh = clampf(ch * 0.17f, 30 * pt, 44 * pt);
         float rowY = top + m * 0.75f;
-        float lrw = clampf(sw * 0.24f, 64 * pt, 140 * pt);
+        float lrw = clampf(sw * 0.18f, 56 * pt, 120 * pt);
         l->button[TC_L] = rect(sx + m, rowY, lrw, rh);
         l->button[TC_R] = rect(sx + sw - m - lrw, rowY, lrw, rh);
-        float gap = 10 * pt, ssh = rh * 0.8f;
+        float gap = 8 * pt, ssh = rh * 0.8f;
         float room = l->button[TC_R].x - (l->button[TC_L].x + lrw) - 2 * gap;  // between L and R
-        float ssw = minf(clampf(sw * 0.17f, 52 * pt, 110 * pt), (room - gap) / 2);
-        float x0 = sx + sw / 2 - (2 * ssw + gap) / 2;
-        l->button[TC_SELECT] = rect(x0, rowY + (rh - ssh) / 2, ssw, ssh);
-        l->button[TC_START] = rect(x0 + ssw + gap, rowY + (rh - ssh) / 2, ssw, ssh);
+        float ssw = minf(clampf(sw * 0.15f, 48 * pt, 100 * pt), (room - 3 * gap) / 4);
+        float x0 = sx + sw / 2 - (4 * ssw + 3 * gap) / 2, sy0 = rowY + (rh - ssh) / 2;
+        static const int kRow[4] = {TC_SAVE, TC_START, TC_SELECT, TC_LOAD};
+        for (int i = 0; i < 4; i++) l->button[kRow[i]] = rect(x0 + i * (ssw + gap), sy0, ssw, ssh);
         // the D-pad and the face buttons below the row
         float aTop = rowY + rh + m * 0.5f, aBottom = bottom - m * 0.5f, ah = aBottom - aTop;
         float k = minf(minf(ah, sw * 0.44f), 230 * pt);
@@ -84,18 +84,20 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
             TcRect p = panel[s];
             float pw = p.w - 2 * m;
             float rh = clampf(sh * 0.11f, 30 * pt, 44 * pt), lrw = minf(clampf(pw * 0.6f, 64 * pt, 150 * pt), pw);
-            float ssh = rh * 0.8f, ssw = minf(clampf(pw * 0.4f, 52 * pt, 110 * pt), pw);
+            float gap = 8 * pt, ssh = rh * 0.8f, ssw = minf(clampf(pw * 0.4f, 52 * pt, 110 * pt), (pw - gap) / 2);
             float cx = p.x + p.w / 2;
             TcRect shoulder = rect(cx - lrw / 2, p.y + m, lrw, rh);
-            TcRect small = rect(cx - ssw / 2, p.y + p.h - m - ssh, ssw, ssh);
+            // (two small buttons side by side at the bottom: Save and Start on the left, Select and Load on the right)
+            TcRect small = rect(cx - ssw - gap / 2, p.y + p.h - m - ssh, 2 * ssw + gap, ssh);
+            TcRect smallA = rect(small.x, small.y, ssw, ssh), smallB = rect(small.x + ssw + gap, small.y, ssw, ssh);
             float aTop = shoulder.y + rh + m, aBottom = small.y - m, ah = aBottom - aTop;
             float k = minf(minf(ah, pw), 260 * pt);
             float cy = aTop + ah / 2;
             if (s == 0) {
-                l->button[TC_L] = shoulder, l->button[TC_SELECT] = small;
+                l->button[TC_L] = shoulder, l->button[TC_SAVE] = smallA, l->button[TC_START] = smallB;
                 l->button[TC_DPAD] = square_at(cx, cy, k * 0.92f);
             } else {
-                l->button[TC_R] = shoulder, l->button[TC_START] = small;
+                l->button[TC_R] = shoulder, l->button[TC_SELECT] = smallA, l->button[TC_LOAD] = smallB;
                 face_buttons(l, cx, cy, k);
             }
         }
@@ -106,7 +108,7 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
 
 static const uint32_t kBit[TC_COUNT] = {
     [TC_A] = 1u << 0, [TC_B] = 1u << 1, [TC_X] = 1u << 10, [TC_Y] = 1u << 11, [TC_L] = 1u << 9, [TC_R] = 1u << 8,
-    [TC_START] = 1u << 3, [TC_SELECT] = 1u << 2, [TC_DPAD] = 0,
+    [TC_START] = 1u << 3, [TC_SELECT] = 1u << 2, [TC_SAVE] = 0, [TC_LOAD] = 0, [TC_DPAD] = 0,
 };
 enum { WHAT_STYLUS = -1, WHAT_NOTHING = -2, WHAT_SLIDING = TC_COUNT };  // (sliding: a button finger between buttons)
 enum { DIR_RIGHT = 1u << 4, DIR_LEFT = 1u << 5, DIR_UP = 1u << 6, DIR_DOWN = 1u << 7 };
@@ -242,7 +244,9 @@ uint32_t tc_dpad_dirs(const TcState *s) {
 // a 5x7 font (the binding screen's, frontend_ui.c): the letters the labels use
 static const struct { char c; const char *rows; } kFont[] = {
     {'A', ".###.#...##...#######...##...##...#"}, {'B', "####.#...##...#####.#...##...#####."},
-    {'C', ".###.#...##....#....#....#...#.###."}, {'E', "######....#....####.#....#....#####"},
+    {'C', ".###.#...##....#....#....#...#.###."}, {'D', "####.#...##...##...##...##...#####."},
+    {'E', "######....#....####.#....#....#####"}, {'O', ".###.#...##...##...##...##...#.###."},
+    {'V', "#...##...##...##...##...#.#.#...#.."},
     {'L', "#....#....#....#....#....#....#####"}, {'R', "####.#...##...#####.#.#..#..#.#...#"},
     {'S', ".#####....#.....###.....#....#####."}, {'T', "#####..#....#....#....#....#....#.."},
     {'X', "#...##...#.#.#...#...#.#.#...##...#"}, {'Y', "#...##...#.#.#...#....#....#....#.."},
@@ -332,7 +336,7 @@ static void label(uint32_t *px, int w, int h, const char *text, float alpha) {
 }
 
 void tc_draw(uint32_t *px, int w, int h, int which, int pressed, uint32_t dirs) {
-    static const char *const kLabel[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", ""};
+    static const char *const kLabel[TC_COUNT] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "SAVE", "LOAD", ""};
     memset(px, 0, (size_t)w * h * 4);
     if (w <= 2 || h <= 2) return;
     float rim = maxf(1.5f, minf((float)w, (float)h) * (which == TC_DPAD ? 0.025f : 0.05f));

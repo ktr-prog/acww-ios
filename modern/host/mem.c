@@ -86,11 +86,13 @@ static int inside(uintptr_t a, uintptr_t n, const void *lo, size_t size) {
 int HostMem_IsGameRam(const void *p, unsigned int n) {
     uintptr_t a = (uintptr_t)p, rlo, rhi;
     host_root_heap_bounds(&rlo, &rhi);
+    const char *sblo = host_game_static_bss_begin(), *sbhi = host_game_static_bss_end();
     return inside(a, n, gHostMainRam, sizeof gHostMainRam) || inside(a, n, &gHostSysWork, sizeof gHostSysWork) ||
            inside(a, n, gHostDtcm, sizeof gHostDtcm) || inside(a, n, gHostItcm, sizeof gHostItcm) ||
            inside(a, n, gHostWramArena, sizeof gHostWramArena) ||
            inside(a, n, gHostGameDataBegin, (size_t)(gHostGameDataEnd + 1 - gHostGameDataBegin)) ||
            inside(a, n, gHostGameBssBegin, (size_t)(gHostGameBssEnd + 1 - gHostGameBssBegin)) ||
+           (sbhi > sblo && inside(a, n, sblo, (size_t)(sbhi + 1 - sblo))) ||
            (rhi > rlo && inside(a, n, (const void *)rlo, rhi - rlo));
 }
 

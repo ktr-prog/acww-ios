@@ -38,6 +38,7 @@
 #include "host.h"
 #include "plat.h"
 #include "render.h"
+#include "savestate.h"
 #include "wgpu_display.h"
 
 // iOS (HOST_IOS; docs/ios.md): the window fills the screen and turns with the device; the screens and the on-screen
@@ -213,6 +214,7 @@ AcwwShm *frontend_backend_open(const char *argv0) {
     tc_reset(&sTouch);
 #else
     void *stack = host_plat_stack_alloc(FE_STACK, 0);
+    host_state_untrack(stack);  // (the frontend's own stack: not the game's state)
 #endif
     if (!sShm || !stack) { fprintf(stderr, "frontend: no memory\n"); SDL_Quit(); free(sShm); return sShm = 0; }
     sShm->magic = ACWW_SHM_MAGIC;
@@ -646,8 +648,21 @@ static void ios_draw_controls(void) {
             if (!*t) continue;
         }
         SDL_Rect dst = {(int)(r.x + 0.5f), (int)(r.y + 0.5f), w, h};
+        // (LOAD dimmed while there's no state to load)
+        SDL_SetTextureAlphaMod(*t, b == TC_LOAD && !host_state_have() ? 96 : 255);
         SDL_RenderCopy(sRen, *t, 0, &dst);
     }
+}
+
+// the SAVE and LOAD buttons: a save state of the game as it is now, or back to the one saved (savestate.c; this
+// launch only). Here the game is held at the end of its frame (sGameSp).
+static void ios_states(void) {
+    static uint32_t was;
+    uint32_t held = tc_held(&sTouch), pressed = held & ~was;
+    was = held;
+    if (pressed & 1u << TC_SAVE && !host_state_save(&sGameSp)) fprintf(stderr, "frontend: state not saved\n");
+    if (pressed & 1u << TC_LOAD && host_state_have() && !host_state_load(&sGameSp))
+        fprintf(stderr, "frontend: state not loaded\n");
 }
 
 // the frame: the screens in their place - drawn at a whole multiple of the DS's pixels (sharp), then smoothed to the
@@ -769,6 +784,7 @@ static void frame_body(void) {
     if (sInBackground) return;  // (went to the background just now: nothing drawn; the next frame waits)
     ios_layout();               // (the buttons shown or hidden by this frame's events)
     ios_stats();
+    ios_states();
     sShm->keys = keyboard_keys() | pad_keys() | tc_keys(&sTouch);
 #else
     sShm->keys = keyboard_keys() | pad_keys();
