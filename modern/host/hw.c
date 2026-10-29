@@ -144,9 +144,11 @@ static void watchdog_start(void) {
 }
 
 // ---- screenshots: ACWW_SHOT="frame:path.ppm;..." (both screens, 256x384)
+static const char *sShotSpec;  // (the environment's string: this launch's, not a loaded state's)
+HOST_STATE_KEEP(sShotSpec)
 static void host_screenshot(void) {
-    static const char *spec;
-    if (!spec) spec = getenv("ACWW_SHOT") ? getenv("ACWW_SHOT") : "";
+    if (!sShotSpec) sShotSpec = getenv("ACWW_SHOT") ? getenv("ACWW_SHOT") : "";
+    const char *spec = sShotSpec;
     u32 f = (u32)host_frame();
     for (const char *p = spec; *p;) {
         unsigned fr; char path[512];

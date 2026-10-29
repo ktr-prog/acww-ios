@@ -8,7 +8,7 @@
 //
 // A state is also written to a file (STATE_FILE, in the working directory: on iOS the app's folder), so it can be
 // loaded after the app was closed. The arena (plat.h) is at a fixed place, the same in every launch; the program is
-// elsewhere in each (ASLR): the file keeps where it was, and a load moves every 8-byte word of the state that points
+// elsewhere in each (ASLR): the file keeps where it was, and a load moves every 8-byte value of the state (at any 4-byte boundary) that points
 // into the old program by how far it moved (and into the old arena, in the rare launch that had it elsewhere). A word
 // that only looks like such a pointer would be moved too: in data, a word pointing into the code that isn't a
 // function's start is left alone (Mach-O: function_starts); the virtual clock's values (cycles and OS ticks, 64-bit)
@@ -420,12 +420,19 @@ static int moved(uint64_t a, const Move *m, int nm, int inStack, uint64_t *out) 
         }
     return 0;
 }
+// (every 4 bytes: the game's heaps align their blocks to 4 bytes, as on the DS, so a pointer in an object there is
+// often at an address that is 4 mod 8)
 static void relocate(unsigned char *buf, size_t n, uint64_t addr, int inStack, const Move *m, int nm) {
-    size_t i = (size_t)((8 - (addr & 7)) & 7);
-    for (; i + 8 <= n; i += 8) {
+    size_t i = (size_t)((4 - (addr & 3)) & 3);
+    while (i + 8 <= n) {
         uint64_t v, w;
         memcpy(&v, buf + i, 8);
-        if (v && moved(v, m, nm, inStack, &w)) memcpy(buf + i, &w, 8);
+        if (v && moved(v, m, nm, inStack, &w)) {
+            memcpy(buf + i, &w, 8);
+            i += 8;
+        } else {
+            i += 4;
+        }
     }
 }
 
@@ -528,6 +535,20 @@ static int load_file(void) {
         at += n;
     }
     if (!ok) { free(snap), free(file); message("THE STATE FILE IS DAMAGED"); return 0; }
+    // ACWW_STATE_CHECK: words (at any alignment) still pointing into the old program after the moving - none expected
+    if (getenv("ACWW_STATE_CHECK")) {
+        size_t a2 = 0; int shown = 0;
+        for (uint32_t i = 0; i < h.nRegions; i++) {
+            for (size_t o = 0; o + 8 <= list[i].n; o += 1) {
+                uint64_t v; memcpy(&v, snap + a2 + o, 8);
+                if (v >= h.imageLo && v < h.imageHi && shown++ < 60)
+                    fprintf(stderr, "savestate: stale: block %u (%p) offset %zx%s: %llx (program + %llx)\n", i, (void *)list[i].p, o,
+                            list[i].stack ? " (a stack)" : "", (unsigned long long)v, (unsigned long long)(v - h.imageLo));
+            }
+            a2 += list[i].n;
+        }
+        fprintf(stderr, "savestate: %d stale words\n", shown);
+    }
     // the arena as the state had it (its blocks accessible: this launch may not have handed them all out yet)
     if (haveArena) {
         if (h.arenaUsed > aused && !host_plat_arena_set_used((size_t)h.arenaUsed)) {

@@ -34,9 +34,11 @@ void frontend_init(const char *argv0) {
 AcwwShm *frontend_shm(void) { return sShm; }
 
 // scripted keys for headless runs: ACWW_KEYS="frame:frames:mask;..." (mask: the bits of AcwwShm.keys, hex)
+static const char *sKeySpec;  // (the environment's string: this launch's, not a loaded state's)
+HOST_STATE_KEEP(sKeySpec)
 static u32 scripted_keys(void) {
-    static const char *spec;
-    if (!spec) spec = getenv("ACWW_KEYS") ? getenv("ACWW_KEYS") : "";
+    const char *spec = sKeySpec;
+    if (!spec) spec = sKeySpec = getenv("ACWW_KEYS") ? getenv("ACWW_KEYS") : "";
     u32 f = (u32)host_frame(), k = 0;
     for (const char *p = spec; *p;) {
         unsigned fr, n, m;
