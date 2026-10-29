@@ -90,10 +90,8 @@ away) and open it again after changing it.
 
 - **The picture** is drawn by the CPU renderers at the DS's resolution, then scaled up sharply. There is no
   higher-resolution 3D (the PC's WebGPU renderer) on iOS yet.
-- **DS-to-DS play** (the gate): iOS doesn't let sideloaded apps broadcast on the local network, which is how copies
-  find each other on a computer. Give the other device's address instead: `ACWW_NET_PEER=192.168.1.23` in
-  `acww-options.txt` (on both devices, each with the other's address; iOS asks once for the local network). Nintendo
-  Wi-Fi Connection isn't supported anywhere.
+- **No DS-to-DS play** (local wireless, the gate): the iOS version doesn't use the local network at all. Online play
+  is to go through Wiimmfi (not there yet).
 - **The game's own reset** (after a broken wireless connection) closes the app with a message. Open it again.
 - There are no environment variables on iOS, so the PC's options (README.md, docs/host.md) keep their defaults.
 

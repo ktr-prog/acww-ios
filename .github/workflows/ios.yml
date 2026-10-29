@@ -39,6 +39,13 @@ jobs:
           cc -O1 -Wall -Imodern/host/ios modern/host/ios/tests/touch_controls_test.c modern/host/ios/touch_controls.c -o build/touch_controls_test
           build/touch_controls_test
 
+      - name: Check the sound of a stream
+        run: |
+          S=modern/host/snd7
+          cc -O1 -Wall -I$S -Imodern/host -Iinclude $S/tests/stream_test.c $S/spu.c $S/driver.c $S/channel.c \
+            $S/exchannel.c $S/seq.c -lm -o build/stream_test
+          build/stream_test
+
       - name: Restore SDL2 for iOS
         id: sdl
         uses: actions/cache@v4

@@ -134,9 +134,7 @@ static void read_options(NSString *docs) {
             @"# No statistics lines in acww-log.txt:\n"
             @"#ACWW_STATS=0\n"
             @"# No touch lines in acww-log.txt:\n"
-            @"#ACWW_TOUCH_LOG=0\n"
-            @"# Wi-Fi (DS-to-DS play): the other device's address on your network:\n"
-            @"#ACWW_NET_PEER=192.168.1.23\n";
+            @"#ACWW_TOUCH_LOG=0\n";
         [text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
         return;
     }

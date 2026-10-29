@@ -200,6 +200,9 @@ static u32 get32(const u8 *p) { return get16(p) | (u32)get16(p + 2) << 16; }
 
 static void net_open(void) {
     if (sSock != BAD_SOCK) return;
+#if HOST_IOS
+    return;  // (iOS: no DS-to-DS play - the radio finds no one; no local network use, so no permission asked)
+#endif
 #ifdef _WIN32
     static int started;
     if (!started) { WSADATA d; if (WSAStartup(MAKEWORD(2, 2), &d)) return; started = 1; }

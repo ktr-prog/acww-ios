@@ -236,7 +236,11 @@ The runtime (`modern/host/`):
   waves and noise, the mixer, the two capture units that the game's effect path uses) clocked by the virtual time;
   `output.c` to the frontend's audio ring and `ACWW_WAV`. Checked against melonDS running the original game: the logo
   jingle comes out with a waveform correlation of 0.998 at the same level, the title music at 0.97-0.997 once its
-  fade-in (run by the ARM9 per frame) is over.
+  fade-in (run by the ARM9 per frame) is over. Two things differ from the DS on purpose: a stream's alarm reaches the
+  ARM9 a quarter of its period late (the stream thread's refill of the block just played came at the very tick, while
+  the channel still had 3 samples of it to play: a click per block, a 186 Hz buzz on the title stream), and a channel
+  faster than the output (the 47.6 kHz title stream) is low-pass filtered before it is sampled at 32.7 kHz instead of
+  held (the folded images sounded grainy). `snd7/tests/stream_test.c` checks both (the iOS workflow runs it).
 - `card.c` (ROM reads), `sdk.c` (the SDK's assembly routines in C), `gaps_code.c` (undecompiled functions),
   `frontend.c` (the frame out, the input in, through `frontend.h`'s AcwwShm block) with `frontend_sdl.c` (64-bit:
   SDL2 in-process, its calls on a stack of their own; an audio callback reads the ring) or `frontend_viewer.c` +

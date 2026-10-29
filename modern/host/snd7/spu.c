@@ -3,9 +3,14 @@
 // the master volume and the output selectors; two capture units that record the mixer into memory (the effects
 // that play back through channels 1 and 3). The output is a stereo sample every 1024 bus cycles (32728 Hz).
 //
-// Channel samples are held between timer steps (no interpolation), as on the DS. Sample data is read from DS
-// memory at mix time, so the game's buffers must stay valid while a channel plays them, as on the DS.
+// Channel samples are held between timer steps (no interpolation), as on the DS, for channels at or below the output
+// rate. A channel faster than the output (the title music: a 47.6 kHz stream) is low-pass filtered to the output's
+// band first (a windowed sinc, about 0.4 ms late): held samples taken at 32.7 kHz from a faster channel fold its upper
+// band and the images of its whole band back into the audible range (a grainy, crackling sound - about 33 dB below
+// the music on the title stream; filtered, more than 60 dB). Sample data is read from DS memory at mix time, so the
+// game's buffers must stay valid while a channel plays them, as on the DS.
 
+#include <math.h>
 #include <string.h>
 
 #include "snd7.h"
@@ -25,6 +30,8 @@ typedef struct {
     s32 cur;        // the sample being output
     s32 adpcm, adpcm_idx, loop_adpcm, loop_adpcm_idx;
     u16 lfsr;
+    u32 hn;                 // samples pushed into hist
+    s16 hist[128];          // the last samples (FIR_HIST): the filter's input
 } ChState;
 static ChState sCh[16];
 
@@ -44,6 +51,61 @@ static const u16 kAdpcmStep[89] = {
     2272,  2499,  2749,  3024,  3327,  3660,  4026,  4428,  4871,  5358,  5894,  6484,  7132,  7845,  8630,
     9493,  10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767};
 static const u8 kVolShift[4] = {4, 3, 2, 0};  // the divider: /1, /2, /4, /16 of a sample shifted up by 4
+
+// ---- the low-pass for channels faster than the output: h(u) = sinc(u) * Kaiser window, u in zero crossings of the
+// cutoff (0.45 of the output rate), FIR_ZC on each side
+#define FIR_ZC 8
+#define FIR_RES 256      // table points per zero crossing
+#define FIR_HIST 128     // (ChState.hist)
+#define FIR_CUT 0.9f     // 2 x the cutoff / the output rate
+static float sKernel[FIR_ZC * FIR_RES + 2];
+static int sKernelInit;
+static double bessel_i0(double x) {
+    double sum = 1, t = 1;
+    for (int k = 1; k < 40; k++) {
+        t *= (x / (2 * k)) * (x / (2 * k));
+        sum += t;
+    }
+    return sum;
+}
+static void kernel_init(void) {
+    sKernelInit = 1;
+    const double beta = 8.0, pi = 3.14159265358979323846;
+    for (int i = 0; i < FIR_ZC * FIR_RES + 2; i++) {
+        double u = (double)i / FIR_RES, w = u / FIR_ZC;
+        double sinc = u == 0 ? 1 : sin(pi * u) / (pi * u);
+        double win = w >= 1 ? 0 : bessel_i0(beta * sqrt(1 - w * w)) / bessel_i0(beta);
+        sKernel[i] = (float)(sinc * win);
+    }
+}
+static inline float kernel(float u) {
+    u = fabsf(u) * FIR_RES;
+    if (u >= FIR_ZC * FIR_RES) return 0;
+    int i = (int)u;
+    float f = u - (float)i;
+    return sKernel[i] + (sKernel[i + 1] - sKernel[i]) * f;
+}
+
+// the channel's value at the output instant, filtered: `per` timer ticks per sample (< TIMER_STEP)
+static s32 filtered(const ChState *s, u32 tmr, u32 per) {
+    if (!sKernelInit) kernel_init();
+    float ratio = (float)TIMER_STEP / (float)per;  // channel samples per output sample (> 1)
+    float k = FIR_CUT / ratio;                      // zero crossings per channel sample
+    float half = FIR_ZC / k;                        // the half width, in channel samples (also the delay)
+    float frac = (float)((s32)s->timer - (s32)tmr) / (float)per;  // the newest sample was taken `frac` samples ago
+    int taps = (int)(2 * half) + 2;
+    if (taps > FIR_HIST) taps = FIR_HIST;
+    if ((u32)taps > s->hn) taps = (int)s->hn;
+    float acc = 0, norm = 0;
+    for (int j = 0; j < taps; j++) {
+        float h = kernel((half - frac - (float)j) * k);
+        acc += h * s->hist[(s->hn - 1 - (u32)j) & (FIR_HIST - 1)];
+        norm += h;
+    }
+    if (norm <= 0) return 0;
+    float v = acc / norm;
+    return (s32)lrintf(v < -32768.0f ? -32768.0f : v > 32767.0f ? 32767.0f : v);
+}
 
 // sample data: the channel's buffer, from SOUNDxSAD to the end of its loop ((SOUNDxPNT + SOUNDxLEN) words; the
 // IMA-ADPCM header at least); anything else (no buffer, past the end) reads as silence
@@ -65,6 +127,8 @@ void spu_cnt_written(int ch, u32 old) {
         s->pos = format_of(ch) == 3 ? -1 : -3;
         s->cur = 0;
         s->lfsr = 0x7fff;
+        s->hn = 0;
+        memset(s->hist, 0, sizeof s->hist);
     }
 }
 
@@ -173,8 +237,11 @@ static s32 run_channel(int ch) {
         s->timer = r->tmr + (s->timer - 0x10000);
         next_sample(ch);
         if (!(r->cnt & 0x80000000u)) break;
+        s->hist[s->hn++ & (FIR_HIST - 1)] = (s16)(s->cur < -0x8000 ? -0x8000 : s->cur > 0x7fff ? 0x7fff : s->cur);
     }
-    return (s->cur << kVolShift[r->cnt >> 8 & 3]) * (s32)(r->cnt & 0x7f);
+    u32 per = 0x10000u - r->tmr;  // timer ticks per sample
+    s32 v = per < TIMER_STEP && format_of(ch) != 3 ? filtered(s, r->tmr, per) : s->cur;
+    return (v << kVolShift[r->cnt >> 8 & 3]) * (s32)(r->cnt & 0x7f);
 }
 
 static inline void pan_out(int ch, s32 v, s64 *l, s64 *r) {

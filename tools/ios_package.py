@@ -69,7 +69,6 @@ def info_plist(version: str, build: str) -> dict:
         "UIFileSharingEnabled": True,
         "LSSupportsOpeningDocumentsInPlace": True,
         # (DS-to-DS play looks for other copies on the local network)
-        "NSLocalNetworkUsageDescription": "DS-to-DS play looks for other copies of the game on your local network.",
         # (SDL can reach some controllers over Bluetooth itself; the app uses Apple's controller support instead,
         # but iOS ends any app that touches Bluetooth without this text)
         "NSBluetoothAlwaysUsageDescription": "Bluetooth is used for game controllers.",
