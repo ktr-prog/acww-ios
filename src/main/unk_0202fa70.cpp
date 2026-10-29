@@ -61,7 +61,7 @@ s32 func_01ffcb0c(s32 a, s32 b);
 void VEC_Subtract(void *a, void *b, void *c);
 void Vec_Sub(void *out, void *a, void *b);
 s32 Vec_SafeNormalize(void *v);
-void Vec_RotateY(void *v, ...);
+void Vec_RotateY(void *v, s32 angle);  // (a fixed declaration: Apple arm64 passes a variadic call's angle on the stack)
 
 // functions of this unit that the files declared with different stand-in prototypes
 void Collision_Query(VecFx32 *a, VecFx32 *b, CollisionVisitor *visitor, u32 flags, u8 p5, u8 p6);

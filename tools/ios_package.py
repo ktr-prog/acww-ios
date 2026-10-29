@@ -76,39 +76,83 @@ def info_plist(version: str, build: str) -> dict:
     }
 
 
-# ---- the icon: two rounded screens, as the DS's, on a green ground (drawn here: no image libraries needed)
+# ---- the icon: a village scene in the game's soft style - a round fruit tree on a grassy hill under a pale sky, with
+# clouds and flowers (an original picture, drawn here: no image libraries needed)
 def draw_icon(n: int) -> bytes:
-    def rr(x, y, x0, y0, x1, y1, r):  # inside a rounded rectangle: coverage 0..1 (2x2 samples)
-        c = 0
-        for sy in (0.25, 0.75):
-            for sx in (0.25, 0.75):
-                px, py = x + sx, y + sy
-                qx = max(x0 + r - px, 0, px - (x1 - r))
-                qy = max(y0 + r - py, 0, py - (y1 - r))
-                if px >= x0 and px <= x1 and py >= y0 and py <= y1 and qx * qx + qy * qy <= r * r:
-                    c += 1
-        return c / 4
+    def mix(c0, c1, t):
+        return tuple(c0[i] + (c1[i] - c0[i]) * t for i in range(3))
+
+    def inside_circle(x, y, cx, cy, r):
+        return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+
+    def inside_ellipse(x, y, cx, cy, rx, ry):
+        return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
+
+    def inside_rrect(x, y, x0, y0, x1, y1, r):
+        if x < x0 or x > x1 or y < y0 or y > y1:
+            return False
+        qx = max(x0 + r - x, 0, x - (x1 - r))
+        qy = max(y0 + r - y, 0, y - (y1 - r))
+        return qx * qx + qy * qy <= r * r
+
+    sky_top, sky_low = (122, 200, 240), (214, 240, 236)
+    cloud, cloud_shade = (255, 255, 255), (226, 238, 246)
+    hill_back, hill, hill_light = (82, 160, 72), (112, 190, 82), (146, 210, 104)
+    trunk, trunk_dark = (150, 98, 56), (118, 74, 40)
+    leaves_dark, leaves, leaves_light = (46, 132, 64), (66, 160, 74), (110, 196, 98)
+    fruit, fruit_light = (236, 84, 62), (255, 170, 140)
+    canopy = ((60, 40, 22), (42, 50, 15), (78, 50, 15), (60, 27, 15), (48, 33, 12), (72, 33, 12))
+    fruits = ((48, 47, 3.6), (70, 39, 3.6), (63, 56, 3.6), (52, 31, 3.2))
+    flowers = ((22, 100, (255, 255, 255)), (31, 108, (255, 196, 214)), (95, 98, (255, 196, 214)),
+               (102, 107, (255, 255, 255)), (86, 106, (255, 236, 150)))
+
+    def color(x, y):  # (x, y in 0..120, y down)
+        c = mix(sky_top, sky_low, min(1.0, y / 84))
+        for cx, cy, r in ((18, 20, 8), (28, 17, 10), (38, 21, 7), (90, 26, 6), (98, 23, 8), (106, 27, 6)):
+            if inside_circle(x, y, cx, cy, r):
+                c = cloud_shade if y > cy + r * 0.35 else cloud
+        if inside_ellipse(x, y, 18, 118, 62, 38):
+            c = hill_back
+        if inside_ellipse(x, y, 74, 128, 80, 44):
+            c = hill_light if inside_ellipse(x, y, 66, 124, 74, 38) and y < 92 else hill
+        for fx, fy, fc in flowers:
+            if y > 88:
+                for dx, dy in ((-1.6, 0), (1.6, 0), (0, -1.6), (0, 1.6)):
+                    if inside_circle(x, y, fx + dx, fy + dy, 1.5):
+                        c = fc
+                if inside_circle(x, y, fx, fy, 1.0):
+                    c = (250, 200, 60)
+        if inside_ellipse(x, y, 60, 92, 15, 3.2):
+            c = mix(c, (60, 120, 50), 0.35)  # (the tree's shadow)
+        if inside_rrect(x, y, 55, 52, 65, 92, 3):
+            c = trunk_dark if x > 61.5 else trunk
+        for cx, cy, r in canopy:
+            if inside_circle(x, y, cx, cy, r + 1.3):
+                c = leaves_dark
+        for cx, cy, r in canopy:
+            if inside_circle(x, y, cx, cy, r):
+                c = leaves
+        for cx, cy, r in canopy:
+            if inside_circle(x, y, cx - r * 0.3, cy - r * 0.32, r * 0.55):
+                c = leaves_light
+        for fx, fy, r in fruits:
+            if inside_circle(x, y, fx, fy, r):
+                c = fruit_light if inside_circle(x, y, fx - r * 0.35, fy - r * 0.35, r * 0.38) else fruit
+        return c
 
     rows = []
-    s = n / 120.0
-    w_scr, h_scr = 64 * s, 40 * s
-    x0 = (n - w_scr) / 2
-    top = (17 * s, 17 * s + h_scr)
-    bottom = (63 * s, 63 * s + h_scr)
-    for y in range(n):
+    k = 4  # (k x k samples a pixel)
+    for py in range(n):
         row = bytearray([0])  # (PNG filter: none)
-        for x in range(n):
-            t = y / n
-            # the ground: a soft green, lighter at the top
-            r, g, b = 86 + (40 * (1 - t)), 168 + (40 * (1 - t)), 96 + (30 * (1 - t))
-            for (ya, yb), (cr, cg, cb) in ((top, (255, 252, 236)), (bottom, (255, 252, 236))):
-                frame = rr(x, y, x0, ya, x0 + w_scr, yb, 7 * s)
-                if frame:
-                    r, g, b = r + (60 - r) * frame * 0.9, g + (92 - g) * frame * 0.9, b + (70 - b) * frame * 0.9
-                inner = rr(x, y, x0 + 5 * s, ya + 5 * s, x0 + w_scr - 5 * s, yb - 5 * s, 3 * s)
-                if inner:
-                    r, g, b = r + (cr - r) * inner, g + (cg - g) * inner, b + (cb - b) * inner
-            row += bytes((int(min(255, max(0, r))), int(min(255, max(0, g))), int(min(255, max(0, b)))))
+        for px in range(n):
+            acc = [0.0, 0.0, 0.0]
+            for sy in range(k):
+                for sx in range(k):
+                    c = color((px + (sx + 0.5) / k) * 120 / n, (py + (sy + 0.5) / k) * 120 / n)
+                    acc[0] += c[0]
+                    acc[1] += c[1]
+                    acc[2] += c[2]
+            row += bytes(int(min(255, max(0, round(v / (k * k))))) for v in acc)
         rows.append(bytes(row))
 
     def chunk(kind, data):
