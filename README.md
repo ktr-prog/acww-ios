@@ -1,3 +1,7 @@
+Features:
+Virtual Circle Pad with Circle Pad Patch included (Credit/source:https://gbatemp.net/threads/circle-pad-patches-for-super-mario-64-ds-and-other-games-in-twilightmenu-with-twpatcher-and-rtcom.623267/)
+
+
 Supported version:
 
 | Version        | Game code | SHA-1                                      |
