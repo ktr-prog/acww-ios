@@ -56,6 +56,14 @@ void host_vram_control(u32 addr, u8 value);
 static u64 sCycles;
 static u32 sTimeless;  // register accesses since time last moved (a spin without time: see io_spin_check)
 u64 host_frame(void) { return sCycles / FRAME_CYCLES; }
+
+// a note from the game's code (include/host_note.h): into the log, at most 400 a run
+void host_note(const char *what, int a, int b, int c) {
+    static int n;
+    if (n >= 400) return;
+    if (++n == 400) fprintf(stderr, "game: (no more notes this run)\n");
+    fprintf(stderr, "game: %s %d %d %d (frame %llu)\n", what, a, b, c, (unsigned long long)host_frame());
+}
 u64 host_cycles(void) { return sCycles; }
 u64 pxi7_next_due(void);
 void pxi7_run_due(void);

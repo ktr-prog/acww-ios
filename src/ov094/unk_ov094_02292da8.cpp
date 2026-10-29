@@ -1,5 +1,6 @@
 #include "types.h"
 #include "item/ItemIconCache.h"
+#include "host_note.h"
 #include "item/ItemName.h"
 #include "menu/InventoryGridTypes.h"
 #include "menu/InventoryItemGrid.h"
@@ -526,6 +527,9 @@ u32 InventoryItemGrid_GetScale(u32 i) {
 void InventoryItemGrid_CancelUploads(InventoryItemGrid *s) {
     s32 i;
     for (i = 0; i < 3; i++) {
+        // (diagnostics: an icon upload that never ran - the icon would show other characters)
+        if (i < s->numIconUploads && s->iconUploadTasks[i].state == 1)
+            host_note("inventory: icon upload cancelled before it ran: slot, pending", i, s->numIconUploads, 0);
         s->iconUploadTasks[i].cancel();
     }
     s->numIconUploads = 0;

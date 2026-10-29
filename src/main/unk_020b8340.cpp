@@ -6,6 +6,7 @@
 #include "gfx/VramTask.h"
 #include "gfx/BgVramTask.h"
 #include "nitro/io_access.h"
+#include "host_note.h"
 
 extern "C" {
 void List_Remove(void *list, void *node);
@@ -117,7 +118,11 @@ extern "C" void VramQueue2d_Dequeue(VramTask *p) {
 extern "C" void VramQueue2d_Run(void) {
     VramTask *r5;
     for (r5 = Unk_020b8340_First((void **)&sVramQueue2d); r5 != 0; r5 = Unk_020b8340_First((void **)&sVramQueue2d)) {
-        if (IO_R((u16 *)0x4000006) + r5->cost > 0x104) break;
+        if (IO_R((u16 *)0x4000006) + r5->cost > 0x104) {
+            // (diagnostics: uploads left for the next frame - a menu cancels its own each frame)
+            host_note("vram queue 2d: out of time at line, cost, kind", IO_R((u16 *)0x4000006), r5->cost, r5->kind);
+            break;
+        }
         BOOL ready = (r5->state == 1) ? TRUE : FALSE;
         if (ready) {
             if (r5->execute() != 0) {

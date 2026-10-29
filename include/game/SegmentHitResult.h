@@ -9,7 +9,7 @@
 // PlayerActor_BugNetSwingCheckGround (ov003).
 struct SegmentHitResult {
     /* 0x00 */ u8 attr;
-    /* 0x04 */ u32 callback;
+    /* 0x04 */ void *callback;  // (CollisionTagX::f_04, a pointer: on 64-bit hosts its 8 bytes ended on hitNormal)
     /* 0x08 */ VecFx32 hitNormal;
 };
 
