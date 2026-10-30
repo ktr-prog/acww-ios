@@ -5,7 +5,7 @@ Toggleable Features:
 Other:
 
 - Accepts EU and US .sav files
-- Seamless transition between touch and button input
+- Seamless transition between touchscreen and button input
 - Local play - With other copies on the same Wi-Fi network
 - Online play - Nintendo Wi-Fi Connection through [Wiimmfi](https://wiimmfi.de/) 
 
