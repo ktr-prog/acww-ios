@@ -1153,9 +1153,8 @@ void ChoiceListCursor::close() {
 void ChoiceListCursor::update() {
     if (list) {
         if (list->getResult() < 0) {
-            if (checkDeviceSwitch()) {
-                resetKeyRepeat();
-            } else {
+            if (checkDeviceSwitch()) resetKeyRepeat();  // (port: then the press counts too, sys/InputReplay.h)
+            {
                 BOOL r = FALSE;
                 if (Input_IsTouchMode()) {
                     if (updateTouch()) {
@@ -1441,7 +1440,8 @@ void ChoiceSliderCursor::close() {
 }
 
 void ChoiceSliderCursor::update() {
-    if (!checkDeviceSwitch()) {
+    checkDeviceSwitch();  // (port: the press that changes the mode counts too, sys/InputReplay.h)
+    {
         static void (ChoiceSliderCursor::*tbl[2])() = {
             &ChoiceSliderCursor::updateSlider,
             &ChoiceSliderCursor::updateOkButton,

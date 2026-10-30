@@ -2,6 +2,7 @@
 #include "ds_div.h"
 #include "host_overlay_vars.h"
 #include "types.h"
+#include "sys/InputReplay.h"
 #include "Unk_020d8c7c.h"
 #include "text/Unk_02050288.h"
 #include "talk/MsgStringBase.h"
@@ -597,13 +598,12 @@ void MenuProc::setMainState(u8 v) { mainState = v; }
 
 void MenuProc::setTransitionState(u8 v) { transitionState = v; }
 
+// (port: buttons and touch at the same time, sys/InputReplay.h: no switch sound, and the press acts next frame)
 BOOL MenuProc::checkSwitchToButtons(s32 a) {
     if ((gPad[1] & 0xfff) != 0) {
         MenuCtrl_SetButtons();
-        Snd_PlaySe(0x866);
-        if (a != 0) {
-            Snd_PlaySe(0x3b);
-        }
+        Input_ReplayKeys(gPad[1] & 0xfff);
+        (void)a;
         return TRUE;
     }
     return FALSE;
@@ -612,7 +612,7 @@ BOOL MenuProc::checkSwitchToButtons(s32 a) {
 BOOL MenuProc::checkSwitchToTouch() {
     if (Unk_ov002_022009d4_Both()) {
         MenuCtrl_SetTouch();
-        Snd_PlaySe(0x866);
+        Input_ReplayTouch();
         return TRUE;
     }
     return FALSE;

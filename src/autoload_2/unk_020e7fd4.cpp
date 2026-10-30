@@ -109,6 +109,9 @@ extern "C" void TouchPanel_Init(void) {
     gTouchY = 0xff;
 }
 
+static u8 sInputReplayTouch;  // (port: sys/InputReplay.h)
+extern "C" void Input_ReplayTouch(void) { sInputReplayTouch = 1; }
+
 extern "C" void TouchPanel_Update(void) {
     TPData buf[4];
     s32 idx;
@@ -139,6 +142,10 @@ extern "C" void TouchPanel_Update(void) {
     }
     gTouchChanged = sTouchPoint.touch ^ gTouchHeld;
     gTouchHeld = sTouchPoint.touch;
+    if (sInputReplayTouch) {  // (port: sys/InputReplay.h)
+        if (gTouchHeld) gTouchChanged = 1;
+        sInputReplayTouch = 0;
+    }
     gTouchX = sTouchPoint.x;
     gTouchY = sTouchPoint.y;
 }

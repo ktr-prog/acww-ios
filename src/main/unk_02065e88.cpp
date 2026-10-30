@@ -2408,7 +2408,8 @@ BOOL TalkWindowState::checkDeviceSwitch() {
 BOOL TalkWindowState::isAdvanceTriggered() {
     BOOL r = FALSE;
     if (inputDisabled == 0) {
-        if (checkDeviceSwitch() == 0) {
+        checkDeviceSwitch();  // (port: the press that changes the mode counts too, sys/InputReplay.h)
+        {
             if (Input_IsTouchTrigInRect(8, 0xf8, 0x70, 0xc0)) {
                 r = TRUE;
             } else if (Input_IsATrig() || Input_IsBTrig()) {
@@ -2421,7 +2422,8 @@ BOOL TalkWindowState::isAdvanceTriggered() {
 BOOL TalkWindowState::isSkipHeld() {
     BOOL r = FALSE;
     if (inputDisabled == 0) {
-        if (checkDeviceSwitch() == 0) {
+        checkDeviceSwitch();  // (port: as above)
+        {
             if (Input_IsTouchTrigInRect(8, 0xf8, 0x70, 0xc0)) {
                 r = TRUE;
             } else if (Input_IsBHeld()) {

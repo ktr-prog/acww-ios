@@ -95,6 +95,12 @@ void InputModeIcon::init() {}
 void InputModeIcon::exit() {}
 
 void InputModeIcon::startModeAnim() {
+    // (port: buttons and touch are taken at the same time, sys/InputReplay.h - no mode to announce: the icon's
+    // pop-up on each change stays hidden)
+    if (1) {
+        isVisible = 0;
+        return;
+    }
     if (inputMode == 0) {
         isVisible = 0;
     } else {

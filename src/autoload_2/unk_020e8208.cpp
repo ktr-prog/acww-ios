@@ -91,6 +91,9 @@ static inline BOOL PAD_DetectFold(void) {
 extern "C" void Gfx_InitNop(void) {
 }
 
+static u16 sInputReplayKeys;  // (port: sys/InputReplay.h)
+extern "C" void Input_ReplayKeys(u16 keys) { sInputReplayKeys |= keys; }
+
 extern "C" void Pad_Update(void) {
     u32 keys;
 
@@ -100,7 +103,8 @@ extern "C" void Pad_Update(void) {
         keys = PAD_Read();
     }
     data_021f47d0 = 0;
-    gPad.trig = keys & (keys ^ sPadPrevHeld);
+    gPad.trig = (u16)((keys & (keys ^ sPadPrevHeld)) | sInputReplayKeys);  // (port: sys/InputReplay.h)
+    sInputReplayKeys = 0;
     sPadPrevHeld = keys;
     gPad.cur = keys;
     gPad.dir = kPadDirAngleTable[(keys & 0xf0) >> 4];

@@ -1,5 +1,6 @@
 // mwcc-version: 1.2/base
 #include "types.h"
+#include "sys/InputReplay.h"
 #include "host_labels.h"
 #include "proto/main/unk_020b4828.h"
 #include "gfx/VecFx32.h"
@@ -274,6 +275,7 @@ void ResidentSelect::updateTouchSelect() {
         changeState(0);
     } else if (gPad.trig & 0xff3) {
         InputMode_SetButtons();
+        Input_ReplayKeys(gPad.trig & 0xff3);  // (port: sys/InputReplay.h)
         changeState(2);
     }
 }
@@ -303,6 +305,7 @@ void ResidentSelect::updatePadSelect() {
     }
     if (Unk_ov004_0223e2f4_Both47()) {
         InputMode_SetTouch();
+        Input_ReplayTouch();  // (port: sys/InputReplay.h)
         changeState(1);
         return;
     }
