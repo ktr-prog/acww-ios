@@ -104,9 +104,12 @@ static u32 goto_keys(void) {
         return 0;
     }
     if (d < bestD - 0.01f) bestD = d, bestAt = host_frame();
-    else if (host_frame() - bestAt == 180)
+    else if (host_frame() - bestAt == 180) {  // (stuck: on to the next waypoint)
         fprintf(stderr, "goto: stuck at %.2f %.2f on the way to %.2f %.2f, frame %llu\n", x, z, tx, tz,
                 (unsigned long long)host_frame());
+        wp++, bestD = 1e9f, bestAt = host_frame();
+        return 0;
+    }
     u32 k = 0;
     float ax = dx < 0 ? -dx : dx, az = dz < 0 ? -dz : dz;
     if (ax > 0.15f && ax > az * 0.4f) k |= dx > 0 ? 0x10 : 0x20;  // Right / Left
