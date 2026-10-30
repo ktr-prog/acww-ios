@@ -87,6 +87,9 @@ static int first_object(struct dl_phdr_info *info, size_t size, void *data) {
 }
 static void find_load_bias(void) { dl_iterate_phdr(first_object, &sLoadBias); }
 #endif
+static void print_code_address(const char *what, uintptr_t a);
+// (for other files' reports: a code address with its symbol where the platform has one)
+void host_print_code_address(const char *what, uintptr_t a) { print_code_address(what, a); }
 static void print_code_address(const char *what, uintptr_t a) {
     if (sLoadBias && a >= sLoadBias) fprintf(stderr, "%s%08lx (%lx)", what, (unsigned long)a, (unsigned long)(a - sLoadBias));
     else fprintf(stderr, "%s%08lx", what, (unsigned long)a);
@@ -285,6 +288,7 @@ void host_debug_init(void) {
 
 #else
 
+void host_print_code_address(const char *what, uintptr_t a) { fprintf(stderr, "%s%08lx", what, (unsigned long)a); }
 void host_debug_init(void) {}
 void host_debug_crash_handlers(void) {}
 void host_debug_exit_dumps(void) {}

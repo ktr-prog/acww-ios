@@ -143,6 +143,15 @@ Heap *gRootHeap; // main heap
 
 // ---- functions, highest address first
 
+#ifdef HOST64
+// (modern/host/frontend.c's network heap tracer: the heap's alloc and free hooks on, the hooks themselves set)
+extern "C" void Heap_HostTrace(Heap *h, HeapAllocHook a, HeapFreeHook f) {
+    sHeapAllocHook = a;
+    sHeapFreeHook = f;
+    if (h != NULL) h->heapFlags |= 0xc00;
+}
+#endif
+
 extern "C" void Heap_OnThreadSwitch(void *a, void *b) {
     OS_SetThreadParameter(a, gCurrentHeap);
     gCurrentHeap = (Heap *)OS_GetThreadParameter(b);

@@ -61,10 +61,18 @@ def http():
         c, a = s.accept()
         d = c.recv(4096)
         log('http', d[:120])
-        body = b'<html><body>This is a test.</body></html>'
+        body = b'<html><body>This is a test.</body></html>' + (b'<!-- ' + b'x' * int(os.environ.get('WFC_PAD', '0')) + b' -->' if os.environ.get('WFC_PAD') else b'')
         lag()
-        c.sendall(b'HTTP/1.1 200 OK\r\nX-Organization: Nintendo\r\nContent-Type: text/html\r\nContent-Length: %d\r\n'
-                  b'Connection: close\r\n\r\n' % len(body) + body)
+        resp = (b'HTTP/1.1 200 OK\r\nServer: nginx\r\nDate: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n'
+                b'Connection: close\r\nX-Organization: Nintendo\r\n\r\n' % (time.strftime('%a, %d %b %Y %H:%M:%S GMT').encode(),
+                                                                         len(body)) + body)
+        if os.environ.get('WFC_SPLIT'):
+            for k in range(0, len(resp), 40):
+                c.sendall(resp[k:k + 40])
+                time.sleep(0.03)
+        else:
+            c.sendall(resp)
+        lag()
         c.close()
 
 

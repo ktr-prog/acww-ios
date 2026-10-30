@@ -147,15 +147,15 @@ void DwcNet_PingAid(s32 id) {
 }
 
 void DwcNet_SetSendDoneCallback(void *cb) {
-    sDwcNetChannels->sendDoneCallback = (void (*)(...))cb;
+    sDwcNetChannels->sendDoneCallback = (void (*)(u32, u32))cb;
 }
 
 void DwcNet_SetRecvCallback(void *cb) {
-    sDwcNetChannels->recvCallback = (void (*)(...))cb;
+    sDwcNetChannels->recvCallback = (void (*)(u32, u8 *, u32))cb;
 }
 
 void DwcNet_SetPingCallback(void *cb) {
-    sDwcNetChannels->pingCallback = (void (*)(...))cb;
+    sDwcNetChannels->pingCallback = (void (*)(u32, u32))cb;
 }
 
 void DwcNet_SetMaxChunkSize(u32 v) {

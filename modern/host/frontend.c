@@ -182,8 +182,75 @@ static void thread_list_check(void) {
         th = th->next;
     }
 }
+// The network heap's blocks, while the game is online (Nintendo WFC): each block given out and taken back is checked
+// against the blocks out, and the first time a block given out overlaps one still out, or a block not out is taken
+// back, both are reported with who asked (acww-log.txt) - memory used twice breaks the game soon after.
+extern void *gNetHeap;
+extern void Heap_HostTrace(void *h, void (*a)(void *, void *, u32, s32), void (*f)(void *, void *));
+void host_print_code_address(const char *what, uintptr_t a);
+enum { NET_BLOCKS = 4096 };
+static struct NetBlock { uintptr_t p; u32 n; uintptr_t by[3]; } sNetBlocks[NET_BLOCKS];
+static int sNetBlockCount, sNetReports;
+static void *sNetTraced;
+static void net_who(const uintptr_t *by) {
+    for (int i = 0; i < 3 && by[i]; i++) host_print_code_address(i ? " <- " : " by ", by[i]);
+    fputc('\n', stderr);
+}
+// the callers past the hook and the heap's own two frames (the frame pointer chain: x86-64 and arm64 alike keep the
+// caller's frame pointer and the return address at the frame pointer), at most 3, checked to stay on this stack
+static void net_callers(uintptr_t by[3]) {
+    by[0] = by[1] = by[2] = 0;
+    uintptr_t *fp = (uintptr_t *)__builtin_frame_address(0), lo = (uintptr_t)fp;
+    for (int i = 0, k = 0; i < 6 && k < 3; i++) {
+        if (!fp || ((uintptr_t)fp & 7) || (uintptr_t)fp < lo || (uintptr_t)fp > lo + (1u << 20)) break;
+        uintptr_t ret = fp[1];
+        if (i >= 2) by[k++] = ret;  // (0: the hook's caller, Heap::alloc/free; 1: its caller, Heap_Alloc...)
+        fp = (uintptr_t *)fp[0];
+    }
+}
+#define NET_CALLERS(by) uintptr_t by[3]; net_callers(by);
+static void net_alloc_hook(void *heap, void *p, u32 n, s32 align) {
+    (void)align;
+    if (heap != gNetHeap || !p) return;
+    NET_CALLERS(by)
+    uintptr_t a = (uintptr_t)p;
+    for (int i = 0; i < sNetBlockCount && sNetReports < 20; i++)
+        if (a < sNetBlocks[i].p + sNetBlocks[i].n && sNetBlocks[i].p < a + n) {
+            fprintf(stderr, "net heap: block %p (%u bytes) given out over block %p (%u bytes) still out, frame %llu:\n  new",
+                    p, n, (void *)sNetBlocks[i].p, sNetBlocks[i].n, (unsigned long long)host_frame());
+            net_who(by);
+            fprintf(stderr, "  old");
+            net_who(sNetBlocks[i].by);
+            sNetReports++;
+        }
+    if (sNetBlockCount < NET_BLOCKS) {
+        struct NetBlock *b = &sNetBlocks[sNetBlockCount++];
+        b->p = a, b->n = n, memcpy(b->by, by, sizeof by);
+    }
+}
+static void net_free_hook(void *heap, void *p) {
+    if (heap != gNetHeap || !p) return;
+    for (int i = 0; i < sNetBlockCount; i++)
+        if (sNetBlocks[i].p == (uintptr_t)p) { sNetBlocks[i] = sNetBlocks[--sNetBlockCount]; return; }
+    if (sNetReports < 20) {
+        NET_CALLERS(by)
+        fprintf(stderr, "net heap: block %p taken back but not out, frame %llu:\n  ", p, (unsigned long long)host_frame());
+        net_who(by);
+        sNetReports++;
+    }
+}
+static void net_heap_trace(void) {
+    if (gNetHeap == sNetTraced) return;
+    sNetTraced = gNetHeap, sNetBlockCount = 0;  // (a new network heap: its blocks from now; earlier ones unknown)
+    if (gNetHeap) {
+        Heap_HostTrace(gNetHeap, net_alloc_hook, net_free_hook);
+        fprintf(stderr, "net heap: tracing %p (frame %llu)\n", gNetHeap, (unsigned long long)host_frame());
+    }
+}
+
 void host_test_post_task(void) {
     gHostGameFrames++;
+    net_heap_trace();
     thread_list_check();
     pitfall_test();
     test_ca();
