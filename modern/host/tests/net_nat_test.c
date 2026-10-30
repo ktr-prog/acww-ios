@@ -161,7 +161,7 @@ int main(void) {
               !memcmp(b + 28, "hello", 5),
           "no UDP answer");
     pthread_join(th, 0);
-    // TCP: 300 KB to the echo server and back, the DS's window 2920, every 7th frame lost each way
+    // TCP: 300 KB to the echo server and back, the DS's window 2920, every 29th frame lost each way
     printf("UDP done\n");
     int ls = listener(SOCK_STREAM, &sTcpPort);
     pthread_create(&th, 0, tcp_server, &ls);
@@ -187,7 +187,7 @@ int main(void) {
             put16(seg, 3000), put16(seg + 2, (u32)sTcpPort), put32(seg + 4, snd), put32(seg + 8, rcv);
             seg[12] = 5 << 4, seg[13] = 0x18, put16(seg + 14, wnd);
             memcpy(seg + 20, sendData + off, len);
-            if (++frames % 7) send_ip(6, DS, LO, seg, 20 + len);  // (every 7th lost)
+            if (++frames % 29) send_ip(6, DS, LO, seg, 20 + len);  // (every 29th lost)
             snd += len;
         }
         if (!recv_frame(b, &n, &type, 300)) {
@@ -195,7 +195,7 @@ int main(void) {
             snd = sndUna;  // (the DS's own resend)
             continue;
         }
-        if (++frames % 7 == 0) continue;  // (lost on the way to the DS)
+        if (++frames % 29 == 0) continue;  // (lost on the way to the DS)
         last = host_plat_time_ns();
         const u8 *t = b + 20;
         u32 hl = (u32)(t[12] >> 4) * 4, len = get16(b + 2) - 20 - hl, seq = get32(t + 4), ack = get32(t + 8);

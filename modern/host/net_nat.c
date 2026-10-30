@@ -250,7 +250,7 @@ static struct Tcp {
     u32 inLen;
     int hostEof, finSent, dsFin, shutWr;
     u64 rto, rtoAt;
-    int retries;
+    int retries, dupAcks;
 } sTcp[MAX_TCP];
 
 static void tcp_seg(struct Tcp *t, u8 flags, u32 seq, const u8 *data, u32 n) {
@@ -397,6 +397,12 @@ static void tcp_in(u32 src, u32 dst, const u8 *s, u32 n) {
             t->retries = 0;
             t->rtoAt = t->sndUna != t->sndNxt ? now_ms() + t->rto : 0;
             if (t->rto > 600) t->rto = 600;
+            t->dupAcks = 0;
+        } else if (t->state == T_OPEN && ack == t->sndUna && t->sndNxt != t->sndUna && !len && wnd == t->dsWnd &&
+                   ++t->dupAcks == 3) {  // the DS has lost a segment and is still getting the later ones: resend now
+            t->sndNxt = t->sndUna;
+            if (t->finSent) t->finSent = 0;
+            t->rtoAt = 0;
         }
         t->dsWnd = wnd;
     }
