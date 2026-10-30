@@ -5,6 +5,7 @@ Toggleable Features:
 Other:
 
 - Accepts EU and US .sav files
+- Seamless transition between touch and button input
 - Local play - With other copies on the same Wi-Fi network (found with Bonjour on iOS)
 - Nintendo Wi-Fi Connection - through [Wiimmfi](https://wiimmfi.de/) 
 
