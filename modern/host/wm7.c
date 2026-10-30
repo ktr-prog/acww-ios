@@ -195,7 +195,7 @@ static int sPeerCount;
 HOST_STATE_KEEP(sPeerCount)
 static struct { struct sockaddr_in addr; u64 until; } sProbers[8];
 
-// ---- infrastructure mode: the access point of Nintendo Wi-Fi Connection through Wiimmfi (the settings' WIIMMFI;
+// ---- infrastructure mode: the access point of Nintendo Wi-Fi Connection through Wiimmfi (always there;
 // net_nat.c is the network behind it). A scan finds it (besides any DS parent), StartConnect to it connects at once,
 // StartDCF / SetDCFData carry the DS's Ethernet frames, and the frames for the DS come as DCF indications (state 15),
 // each in a buffer of its own (the message's: free again with it).
@@ -238,7 +238,7 @@ static u32 get32(const u8 *p) { return get16(p) | (u32)get16(p + 2) << 16; }
 
 static void net_open(void) {
     if (sSock != BAD_SOCK) return;
-    if (!host_local_play_on()) return;  // (the settings' LOCAL PLAY off: the radio finds no one)
+    if (!host_local_play_on()) return;  // (ACWW_LOCAL_PLAY=0: the radio finds no other copy)
 #ifdef _WIN32
     static int started;
     if (!started) { WSADATA d; if (WSAStartup(MAKEWORD(2, 2), &d)) return; started = 1; }
@@ -1081,9 +1081,9 @@ u64 wm7_next_due(void) {
     u64 d = ~0ull;
     if (sOutCount) d = sOut[sOutHead].due;
     if (sInfra && sNextNat < d) d = sNextNat;
+    if (sScanMsg && sScanDue < d) d = sScanDue;  // (a scan ends whether or not local play has its socket)
     if (sSock == BAD_SOCK) return d;
     if (sNextPoll < d) d = sNextPoll;
-    if (sScanMsg && sScanDue < d) d = sScanDue;
     if (sMp && (sState == ST_MP_PARENT) && sNextMp < d) d = sNextMp;
     if ((sState == ST_PARENT || sState == ST_MP_PARENT) && sNextBeacon < d) d = sNextBeacon;
     return d;

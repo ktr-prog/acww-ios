@@ -195,7 +195,7 @@ static NSString *find_rom(NSString *docs) {
     }
 }
 
-// ---- local play (the settings' LOCAL PLAY, wm7.c): the copies on the local network find each other with Bonjour
+// ---- local play (at the gate, always there: wm7.c): the copies on the local network find each other with Bonjour
 // (_acww._udp, Info.plist's NSBonjourServices), as an app without Apple's multicast permission can't broadcast. Each
 // copy publishes its UDP port; every other one found is resolved and handed to wm7 as a peer. Runs on the main
 // thread's run loop, which SDL turns between frames (the game is held then).

@@ -9,8 +9,6 @@ static const struct {
     const char *key, *name;
 } kFeatures[FEAT_COUNT] = {
     [FEAT_CIRCLE_PAD] = {"circle_pad", "CIRCLE PAD"},
-    [FEAT_LOCAL_PLAY] = {"local_play", "LOCAL PLAY"},
-    [FEAT_WIIMMFI] = {"wiimmfi", "WIIMMFI"},
 };
 static int sOn[FEAT_COUNT];
 static char sPath[1024];
@@ -47,12 +45,9 @@ void features_init(const char *path) {
 
 int feature_on(int f) { return f >= 0 && f < FEAT_COUNT && sOn[f]; }
 
-int host_local_play_on(void) { return !sPath[0] || sOn[FEAT_LOCAL_PLAY]; }
-
-int host_wiimmfi_on(void) {
-    if (!sPath[0]) return getenv("ACWW_WIIMMFI") && atoi(getenv("ACWW_WIIMMFI")) != 0;
-    return sOn[FEAT_WIIMMFI];
-}
+static int env_off(const char *name) { return getenv(name) && atoi(getenv(name)) == 0; }
+int host_local_play_on(void) { return !env_off("ACWW_LOCAL_PLAY"); }
+int host_wiimmfi_on(void) { return !env_off("ACWW_WIIMMFI"); }
 
 void feature_set(int f, int on) {
     if (f < 0 || f >= FEAT_COUNT || sOn[f] == (on != 0)) return;

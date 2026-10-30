@@ -177,9 +177,9 @@ static void firmware_user_settings(void) {
 
 // ---- the Wi-Fi settings: DWC's backup area, four pages of 0x100 bytes below the user settings (each with a CRC16 at
 // 0xfe): the three connections (access points) and the WFC user ID (0xf0, in pages 0 and 1). Kept in a file next to
-// the save file (<save>.wfc), so the WFC ID - Wiimmfi's account - stays the same. With the settings' WIIMMFI on,
-// connection 1 is the emulated access point (wm7.c, net_nat.c) with Wiimmfi's DNS server; off, it is taken out again
-// (only if it is that one).
+// the save file (<save>.wfc), so the WFC ID - Wiimmfi's account - stays the same. Connection 1 is the emulated access
+// point (wm7.c, net_nat.c) with Wiimmfi's DNS server; with ACWW_WIIMMFI=0 (tests) it is taken out again (only if it
+// is that one).
 #include "host_features.h"
 #include "net_nat.h"
 static char sWfcPath[1024];

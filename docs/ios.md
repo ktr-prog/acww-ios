@@ -90,12 +90,12 @@ away) and open it again after changing it.
 
 - **The picture** is drawn by the CPU renderers at the DS's resolution, then scaled up sharply. There is no
   higher-resolution 3D (the PC's WebGPU renderer) on iOS yet.
-- **Local play** (DS-to-DS, the gate) is a switch in the settings (MENU), off at first. On, the copies of the game on the
-  same Wi-Fi network find each other with Bonjour (iOS asks once for the local network).
-- **Nintendo Wi-Fi Connection through Wiimmfi** is a switch of its own (WIIMMFI). On, the game's Wi-Fi connection 1 is an
-  access point the app plays ("ACWW Wiimmfi"), and the game's traffic goes through the iPhone's internet connection
-  with Wiimmfi's DNS server (167.86.108.126), which is how Wiimmfi serves a real DS (wiimmfi.de). The game's WFC ID is
-  kept next to the save file (`<name>.wfc`): keep it with the save. Off, connection 1 is taken out again.
+- **The gate** works as on the DS, both ways always there, no switch: **local play** (DS-to-DS) with the copies of the
+  game on the same Wi-Fi network, found with Bonjour (iOS asks once for the local network), and **Nintendo Wi-Fi
+  Connection**, which goes to Wiimmfi: the game's Wi-Fi connection 1 is an access point the app plays ("ACWW
+  Wiimmfi"), and the game's traffic goes through the device's internet connection with Wiimmfi's DNS server
+  (167.86.108.126), which is how Wiimmfi serves a real DS (wiimmfi.de). The game's WFC ID is kept next to the save file
+  (`<name>.wfc`): keep it with the save.
 - **The game's own reset** (after a broken wireless connection) closes the app with a message. Open it again.
 - There are no environment variables on iOS, so the PC's options (README.md, docs/host.md) keep their defaults.
 

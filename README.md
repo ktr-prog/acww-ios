@@ -2,9 +2,10 @@ Toggleable Features:
 
 Circle Pad - Credit/Source: [https://gbatemp.net/threads/circle-pad-patches-for-super-mario-64-ds-and-other-games-in-twilightmenu-with-twpatcher-and-rtcom.623267/)](https://gbatemp.net/threads/circle-pad-patches-for-super-mario-64-ds-and-other-games-in-twilightmenu-with-twpatcher-and-rtcom.623267/)
 
-Local Play - DS-to-DS play (the gate) with other copies on the same Wi-Fi network (found with Bonjour on iOS)
+Always there (not toggles), at the town gate as on the DS:
 
-Wiimmfi - Nintendo Wi-Fi Connection through [Wiimmfi](https://wiimmfi.de/) (its DNS server, as for a real DS)
+- Local play - DS-to-DS play with other copies on the same Wi-Fi network (found with Bonjour on iOS)
+- Nintendo Wi-Fi Connection - through [Wiimmfi](https://wiimmfi.de/) (its DNS server, as for a real DS)
 
 Supported version:
 
