@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifndef _WIN32
+#include <dirent.h>
+#include <strings.h>
+#endif
 
 #include "host.h"
 #include "host_mem.h"
@@ -352,6 +356,7 @@ static u8 *sSave;
 static u32 sSaveSize;
 static const char *sSavePath;
 static FILE *sSaveFile;
+static int sSaveBesideRom;  // (the save path is the ROM's name: another save file beside it may be taken)
 
 // (a save state's load leaves the save memory alone - its buffer and its file: the game's save on disk isn't rolled
 // back with the state; savestate.c)
@@ -362,6 +367,83 @@ static void save_keep(void) {
     host_state_keep(&sSaveFile, sizeof sSaveFile);
 }
 
+// ---- saves from the other versions. The town data (two copies of 0x15fe0 bytes) starts with the version's code:
+// 0x8a USA, 0xc5 Europe (the same layout: only the code differs - Universal-Team's LeafEdit treats them alike),
+// 0x32 Japan and Korea (other layouts: 0x12224 and 0x173fc bytes a copy, other text encodings). The game reads only
+// its own code (SaveData::isValid) and would take any other save for none and start a new town over it.
+enum { SAVE_COPY = 0x15fe0, SAVE_SUM = 0x15fdc };
+static int save_version(const u8 *d, u32 n) {  // 'U' USA, 'E' Europe, 'J' Japan, 'K' Korea, 0 none
+    if (n < 2 * SAVE_COPY) return 0;
+    if (d[0] == 0x8a && d[SAVE_COPY] == 0x8a) return 'U';
+    if (d[0] == 0xc5 && d[SAVE_COPY] == 0xc5) return 'E';
+    if (d[0] == 0x32 && d[0x12224] == 0x32) return 'J';
+    if (d[0] == 0x32 && d[0x173fc] == 0x32) return 'K';
+    return 0;
+}
+// a European save as the USA version's: each copy's code, and its checksum (the copy's 16-bit words sum to 0)
+static void save_from_europe(u8 *d) {
+    for (u32 c = 0; c < 2 * SAVE_COPY; c += SAVE_COPY) {
+        if (d[c] != 0xc5) continue;  // (an empty or damaged copy stays as it is)
+        u16 sum = 0, old = (u16)(d[c + SAVE_SUM] | d[c + SAVE_SUM + 1] << 8);
+        for (u32 i = 0; i < SAVE_COPY; i += 2) sum = (u16)(sum + (d[c + i] | d[c + i + 1] << 8));
+        int valid = sum == 0;
+        d[c] = 0x8a;
+        if (!valid) continue;  // (a copy the European game itself wouldn't have read: left damaged)
+        sum = 0;
+        for (u32 i = 0; i < SAVE_COPY; i += 2)
+            if (i != SAVE_SUM) sum = (u16)(sum + (d[c + i] | d[c + i + 1] << 8));
+        u16 cs = (u16)-sum;
+        d[c + SAVE_SUM] = (u8)cs, d[c + SAVE_SUM + 1] = (u8)(cs >> 8);
+        (void)old;
+    }
+}
+static int copy_file(const char *from, const char *to) {
+    FILE *a = fopen(from, "rb"), *b = a ? fopen(to, "wb") : 0;
+    int ok = a && b;
+    char buf[65536];
+    size_t n;
+    while (ok && (n = fread(buf, 1, sizeof buf, a)) > 0) ok = fwrite(buf, 1, n, b) == n;
+    if (a) fclose(a);
+    if (b && fclose(b) != 0) ok = 0;
+    return ok;
+}
+// No save file for the game yet: a save of any version next to it, under another name (another dump's name, an
+// emulator's .dsv - DeSmuME's: the data then a footer), is taken: copied to the game's name, the original left alone.
+static void save_adopt(void) {
+#ifndef _WIN32
+    char dir[1024];
+    snprintf(dir, sizeof dir, "%s", sSavePath);
+    char *slash = strrchr(dir, '/');
+    if (slash) *slash = 0; else snprintf(dir, sizeof dir, ".");
+    DIR *dp = opendir(dir);
+    if (!dp) return;
+    struct dirent *e;
+    char found[1200] = "";
+    int count = 0;
+    while ((e = readdir(dp))) {
+        const char *x = strrchr(e->d_name, '.');
+        if (!x || e->d_name[0] == '.' || (strcasecmp(x, ".sav") && strcasecmp(x, ".dsv"))) continue;
+        char path[1200];
+        snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
+        FILE *f = fopen(path, "rb");
+        if (!f) continue;
+        static u8 head[0x40000];
+        size_t n = fread(head, 1, sizeof head, f);
+        fclose(f);
+        if (!save_version(head, (u32)n)) continue;
+        count++;
+        snprintf(found, sizeof found, "%s", path);
+    }
+    closedir(dp);
+    if (count != 1) {
+        if (count > 1) fprintf(stderr, "pxi7: %d save files of the game next to it, none called %s: none taken\n", count, sSavePath);
+        return;
+    }
+    if (copy_file(found, sSavePath)) fprintf(stderr, "pxi7: the save file %s taken (copied to %s)\n", found, sSavePath);
+    else remove(sSavePath);
+#endif
+}
+
 static void save_load(u32 size) {
     save_keep();
     if (sSave && size <= sSaveSize) return;
@@ -369,11 +451,40 @@ static void save_load(u32 size) {
     memset(sSave + sSaveSize, 0xff, size - sSaveSize);
     sSaveSize = size;
     if (!sSavePath) return;
-    if (!sSaveFile) sSaveFile = fopen(sSavePath, "r+b");  // created at the first write if missing
+    if (!sSaveFile) {
+        FILE *probe = fopen(sSavePath, "rb");
+        if (probe) fclose(probe);
+        else if (sSaveBesideRom) save_adopt();
+        sSaveFile = fopen(sSavePath, "r+b");  // created at the first write if missing
+    }
     if (sSaveFile) {
         fseek(sSaveFile, 0, SEEK_SET);
         size_t n = fread(sSave, 1, size, sSaveFile);
         fprintf(stderr, "pxi7: save memory %#x bytes, %#zx loaded from %s\n", size, n, sSavePath);
+        int v = save_version(sSave, (u32)n);
+        if (v == 'E') {
+            // (the European original kept beside it, once)
+            char keep[1100];
+            snprintf(keep, sizeof keep, "%s.europe", sSavePath);
+            FILE *k = fopen(keep, "rb");
+            if (k) fclose(k);
+            else if ((k = fopen(keep, "wb"))) { fwrite(sSave, 1, n, k); fclose(k); }
+            save_from_europe(sSave);
+            fseek(sSaveFile, 0, SEEK_SET);
+            fwrite(sSave, 1, n, sSaveFile);
+            fflush(sSaveFile);
+            fprintf(stderr, "pxi7: a European save: made the USA version's (the original kept as %s)\n", keep);
+        } else if (v == 'J' || v == 'K') {
+            // (not taken: the game would start a new town over it)
+            fclose(sSaveFile);
+            sSaveFile = 0;
+            sSavePath = 0;
+            memset(sSave, 0xff, size);
+            host_fatal(v == 'J' ? "the save file is from the Japanese version, whose save layout differs from the USA "
+                                  "version's - it can't be used yet (the file is left as it is)"
+                                : "the save file is from the Korean version, whose save layout differs from the USA "
+                                  "version's - it can't be used yet (the file is left as it is)");
+        }
     }
 }
 // write a changed range through to the file (the whole memory when the file is new)
@@ -575,6 +686,7 @@ void pxi7_init(void) {
     if (!sSavePath && !getenv("ACWW_HEADLESS")) {  // (playing: next to the ROM, <name>.sav; test runs: none)
         extern const char *host_rom_path(void);
         static char path[1024];
+        sSaveBesideRom = 1;
         const char *rom = host_rom_path();
         size_t n = rom ? strlen(rom) : 0;
         if (n > 4 && !strcmp(rom + n - 4, ".nds")) n -= 4;

@@ -51,6 +51,13 @@ you can still try it.
 writes it when you save in the game. Copy it somewhere safe from time to time. The PC version uses the same file:
 put it next to the `.nds` there, with the same name. Deleting the app deletes the folder, and the save with it.
 
+**A save from elsewhere:** put it in the folder. A `.sav` or `.dsv` (DeSmuME) with another name is taken when the
+game has no save of its own yet (copied to `<game name>.sav`; the original stays). A save from the European version
+works too: the USA and European saves are laid out alike, only the version code at their start differs; it is made
+the USA version's at the first start (the European original kept as `<game name>.sav.europe`). The Japanese and
+Korean versions' saves are laid out differently: the app says so and leaves the file alone (the game would otherwise
+start a new town over it).
+
 ## Playing
 
 **Touch:** the bottom screen is the touch screen (the stylus). The buttons below the screens (upright) or beside them
