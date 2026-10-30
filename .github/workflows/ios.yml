@@ -50,7 +50,12 @@ jobs:
         run: |
           cc -O1 -Wall -Imodern/host -Iinclude modern/host/tests/net_nat_test.c modern/host/net_nat.c -lpthread \
             -o build/net_nat_test
-          build/net_nat_test
+          # (its lines also as annotations: what happened is readable without the log)
+          set -o pipefail
+          timeout 120 build/net_nat_test 2>&1 | tee build/net_nat_test.txt
+          rc=$?
+          if [ $rc -ne 0 ]; then head -n 20 build/net_nat_test.txt | sed 's/^/::warning::/'; fi
+          exit $rc
 
       - name: Restore SDL2 for iOS
         id: sdl

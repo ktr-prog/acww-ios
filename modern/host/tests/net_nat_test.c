@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <signal.h>
+#include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -87,11 +89,14 @@ static void *tcp_server(void *arg) {
 }
 static void *udp_server(void *arg) {
     int s = *(int *)arg;
+    struct timeval tv = {3, 0};  // (never waits for good: a datagram that doesn't come fails the test, not hangs it)
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
     u8 b[2048];
     struct sockaddr_in from;
     socklen_t fl = sizeof from;
     ssize_t r = recvfrom(s, b, sizeof b, 0, (struct sockaddr *)&from, &fl);
     if (r > 0) sendto(s, b, (size_t)r, 0, (struct sockaddr *)&from, fl);
+    printf("udp server: %s\n", r > 0 ? "a datagram, echoed" : "nothing came");
     return 0;
 }
 static int listener(int type, int *port) {
@@ -106,7 +111,17 @@ static int listener(int type, int *port) {
     return s;
 }
 
+static void timeout_handler(int sig) {
+    (void)sig;
+    static const char m[] = "FAIL: the test took too long\n";
+    if (write(1, m, sizeof m - 1) < 0) _exit(3);
+    _exit(2);
+}
+
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    signal(SIGALRM, timeout_handler);
+    alarm(90);
     const u32 DS = 0x0a00000a, GW = 0x0a000001, LO = 0x7f000001;
     u8 b[1600];
     u32 n;
@@ -147,6 +162,7 @@ int main(void) {
           "no UDP answer");
     pthread_join(th, 0);
     // TCP: 300 KB to the echo server and back, the DS's window 2920, every 7th frame lost each way
+    printf("UDP done\n");
     int ls = listener(SOCK_STREAM, &sTcpPort);
     pthread_create(&th, 0, tcp_server, &ls);
     enum { TOTAL = 300000 };
