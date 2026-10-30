@@ -179,6 +179,12 @@ void NasAuth_Abort(void) {
 }
 
 void NasAuth_Destroy(void) {
+#ifdef HOST64
+    // (its thread first ends, as in NetCheck_Destroy: the work holds the thread)
+    if (sNasAuth != NULL && sNasAuth->thread.id != 0 && OS_IsThreadTerminated(&sNasAuth->thread) == 0) {
+        NasAuth_Abort();
+    }
+#endif
     if (sNasAuth != NULL) {
         if (sNasAuth->http) {
             DwcHttp_Destroy(sNasAuth->http);

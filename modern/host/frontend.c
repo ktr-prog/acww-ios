@@ -11,6 +11,7 @@
 #include "host.h"
 #include "host_mem.h"
 #include "savestate.h"
+#include "sys/OSThread.h"
 
 static AcwwShm *sShm;
 HOST_STATE_KEEP(sShm)  // (this launch's block, not a loaded state's: savestate.c)
@@ -164,8 +165,26 @@ static void test_ca(void) {
     }
 }
 volatile unsigned long long gHostGameFrames;  // (host_features.h)
+// the OS's thread list, checked after each turn: a broken entry (a thread's memory freed and used again while the
+// thread was still listed) is reported once, with the frame, before it brings the game down (acww-log.txt)
+extern OSThreadInfo data_021fcc2c;
+static void thread_list_check(void) {
+    static int reported;
+    if (reported) return;
+    const OSThread *th = data_021fcc2c.list;
+    for (int n = 0; th && n < 64; n++) {
+        if (th->state > 2 || th->priority > 32 || th->id > 1000) {
+            fprintf(stderr, "host: the thread list is broken at frame %llu: thread %p (id %u, state %u, priority %u)\n",
+                    (unsigned long long)host_frame(), (const void *)th, th->id, th->state, th->priority);
+            reported = 1;
+            return;
+        }
+        th = th->next;
+    }
+}
 void host_test_post_task(void) {
     gHostGameFrames++;
+    thread_list_check();
     pitfall_test();
     test_ca();
     if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";

@@ -415,6 +415,12 @@ fail:
 }
 
 void DwcHttp_Destroy(DwcHttp *c) {
+#ifdef HOST64
+    // (its thread first ends, as in NetCheck_Destroy: the work holds the thread)
+    if (c != NULL && c->thread.id != 0 && OS_IsThreadTerminated(&c->thread) == 0 && &c->thread != data_021fcc2c.current) {
+        DwcHttp_Abort(c);
+    }
+#endif
     if (c != NULL) {
         if (c->userRecvBuffer == NULL) {
             DwcHttp_FreeBuffer(c, &c->responseBuffer);

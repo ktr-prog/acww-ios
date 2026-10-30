@@ -411,16 +411,62 @@ static void finger_to_logical(float fx, float fy, int *x, int *y) {
     *x = (int)lx;
     *y = (int)ly;
 }
-static void update_touch(void) {
+// Taps for the game. The game looks at the touch screen once a turn of its main loop - every third screen refresh
+// in town (20 a second) - so a quick tap, or the release between two quick taps, could fall between two looks and
+// be lost. Each press is noted as it happens (touch_sample, after every touch event too, so even a tap that starts
+// and ends between two frames counts), queued, and shown to the game for at least two of its turns; the release
+// before the next queued tap as well. A held finger is followed as it moves, at once.
+static struct { int x, y; } sTapQ[32];
+static int sTapHead, sTapCount;
+static int sRawDown, sRawX, sRawY;
+static unsigned sPressId, sCurId;  // (the finger's press; the one shown)
+static int sCurDown, sCurX, sCurY;
+static unsigned long long sCurAt, sUpAt;  // (gHostGameFrames when the shown press began / ended)
+static int raw_touch(int *x, int *y) {
 #if HOST_IOS
-    int tx, ty, was = sShm->touch_down != 0;
-    if (tc_stylus(&sTouch, &tx, &ty)) {
-        sShm->touch_x = tx;
-        sShm->touch_y = ty;
-        sShm->touch_down = 1;
-    } else {
-        sShm->touch_down = 0;
+    return tc_stylus(&sTouch, x, y);
+#else
+    int held = sFinger.held || sMouse.held;
+    *x = sFinger.held ? sFinger.x : sMouse.x, *y = (sFinger.held ? sFinger.y : sMouse.y) - 192;
+    if (held && *y < 0 && sRawDown) *x = sRawX, *y = sRawY;  // (dragged off the top: held at the last point)
+    else if (held && *y < 0) return 0;
+    return held && *x >= 0 && *x < 256 && *y < 192;
+#endif
+}
+static void touch_sample(void) {
+    int x, y, down = raw_touch(&x, &y);
+    if (down && !sRawDown) {  // a new press
+        sPressId++;
+        if (sTapCount < 32) {
+            sTapQ[(sTapHead + sTapCount) % 32].x = x, sTapQ[(sTapHead + sTapCount) % 32].y = y;
+            sTapCount++;
+        }
     }
+    if (down) sRawX = x, sRawY = y;
+    sRawDown = down;
+}
+static void touch_publish(void) {
+    unsigned long long now = gHostGameFrames;
+    if (sCurDown) {
+        int live = sCurId == sPressId && sRawDown && !sTapCount;  // (the finger of this press still down)
+        if (live) sCurX = sRawX, sCurY = sRawY;
+        else if (now - sCurAt >= 2) sCurDown = 0, sUpAt = now;
+    }
+    if (!sCurDown && sTapCount && now - sUpAt >= 2) {
+        sCurX = sTapQ[sTapHead].x, sCurY = sTapQ[sTapHead].y;
+        sTapHead = (sTapHead + 1) % 32, sTapCount--;
+        sCurId = sPressId - (unsigned)sTapCount;  // (the press it came from)
+        sCurDown = 1, sCurAt = now;
+    }
+    if (sCurDown) sShm->touch_x = sCurX, sShm->touch_y = sCurY;
+    sShm->touch_down = sCurDown;
+}
+static void update_touch(void) {
+    touch_sample();
+#if HOST_IOS
+    int tx = sCurX, ty = sCurY, was = sShm->touch_down != 0;
+    touch_publish();
+    tx = sShm->touch_x, ty = sShm->touch_y;
     // (the log, acww-log.txt: the stylus going down and up, the first 200 times; ACWW_TOUCH_LOG=0: never)
     static int logged, logOn = -1;
     if (logOn < 0) logOn = !getenv("ACWW_TOUCH_LOG") || atoi(getenv("ACWW_TOUCH_LOG")) != 0;
@@ -431,18 +477,16 @@ static void update_touch(void) {
     }
     return;
 #endif
-    int held = sFinger.held || sMouse.held;
-    int x = sFinger.held ? sFinger.x : sMouse.x, y = sFinger.held ? sFinger.y : sMouse.y;
-    if (held && y >= 192 && y < 384 && x >= 0 && x < 256) {
-        sShm->touch_x = x;
-        sShm->touch_y = y - 192;
-        sShm->touch_down = 1;
-    } else if (!held || y < 192) {
-        sShm->touch_down = 0;  // (dragged off the side: held at the last point, as the viewer does)
-    }
+    touch_publish();
 }
 
+static void handle_event(const SDL_Event *e);
+// an event, then the touch screen as it now is (touch_sample: a tap begun and ended within one frame still counts)
 static void handle(const SDL_Event *e) {
+    handle_event(e);
+    touch_sample();
+}
+static void handle_event(const SDL_Event *e) {
     // (the binding screen takes the rest while it is open)
     if (e->type == SDL_QUIT) { sShm->quit = 1; return; }
     if (e->type == SDL_CONTROLLERDEVICEADDED) { pad_added(e->cdevice.which); return; }
@@ -476,6 +520,7 @@ static void handle(const SDL_Event *e) {
         if (tc_pointer(&sTouch, &sLayout, (int64_t)e->tfinger.fingerId, ev, e->tfinger.x * (float)sLayout.w,
                        e->tfinger.y * (float)sLayout.h))
             sShowControls = 1;
+        touch_sample();
         return;
     }
     case SDL_MOUSEBUTTONDOWN:
@@ -484,6 +529,7 @@ static void handle(const SDL_Event *e) {
         if (tc_pointer(&sTouch, &sLayout, -1000, e->type == SDL_MOUSEBUTTONDOWN ? TC_DOWN : TC_UP,
                        (float)e->button.x * sPt, (float)e->button.y * sPt))
             sShowControls = 1;
+        touch_sample();
         return;
     case SDL_MOUSEMOTION:
         if (e->motion.which == SDL_TOUCH_MOUSEID) return;

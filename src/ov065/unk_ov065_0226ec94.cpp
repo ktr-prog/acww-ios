@@ -122,6 +122,16 @@ s32 NetCheck_Start(NetCheckParams *cfg) {
 
 void NetCheck_Destroy() {
     NetCheckWork *g;
+#ifdef HOST64
+    // (its thread first ends: the work holds the thread, and a thread still listed in freed memory broke the OS's
+    // thread list once the memory was used again - the thread runs at the caller's priority and was not always done)
+    if (sNetCheck != 0 && sNetCheck->thread.id != 0 && OS_IsThreadTerminated(&sNetCheck->thread) == 0) {
+        if (sNetCheckHttp != 0) {
+            DwcHttp_Abort(sNetCheckHttp);
+        }
+        OS_JoinThread(&sNetCheck->thread);
+    }
+#endif
     if (sNetCheckHttp != 0) {
         DwcHttp_Destroy(sNetCheckHttp);
         sNetCheck->freeFunc("DWChttp", sNetCheckHttp, 0);

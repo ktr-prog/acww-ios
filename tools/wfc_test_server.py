@@ -21,6 +21,14 @@ ap.add_argument('--certdir', default='.')
 args = ap.parse_args()
 
 
+LAG = float(os.environ.get('WFC_LAG', '0'))  # (WFC_LAG=<seconds>: a wait before each answer, like a far server)
+
+
+def lag():
+    if LAG:
+        time.sleep(LAG)
+
+
 def log(*a):
     print(time.strftime('%H:%M:%S'), *a, flush=True)
 
@@ -37,6 +45,7 @@ def dns():
             i += 1 + d[i]
         q = d[12:i + 5]
         log('dns', '.'.join(name))
+        lag()
         r = d[:2] + b'\x81\x80' + struct.pack('>HHHH', 1, 1, 0, 0) + q + b'\xc0\x0c' + struct.pack('>HHIH', 1, 1, 60, 4) \
             + socket.inet_aton(args.ip)
         s.sendto(r, a)
@@ -53,6 +62,7 @@ def http():
         d = c.recv(4096)
         log('http', d[:120])
         body = b'<html><body>This is a test.</body></html>'
+        lag()
         c.sendall(b'HTTP/1.1 200 OK\r\nX-Organization: Nintendo\r\nContent-Type: text/html\r\nContent-Length: %d\r\n'
                   b'Connection: close\r\n\r\n' % len(body) + body)
         c.close()
@@ -134,6 +144,7 @@ class Ssl3:
         return t, body
 
     def send_record(self, t, body):
+        lag()
         if self.wr:
             body = self.wr(body + self.mac(self.smac, self.wseq, t, body))
             self.wseq += 1
@@ -156,7 +167,7 @@ class Ssl3:
         sl = ch[38]
         ncs = struct.unpack('>H', ch[39 + sl:41 + sl])[0]
         suites = [struct.unpack('>H', ch[41 + sl + 2 * i:43 + sl + 2 * i])[0] for i in range(ncs // 2)]
-        suite = 5 if 5 in suites else 4
+        suite = int(os.environ.get('WFC_SUITE', '5' if 5 in suites else '4'))  # (WFC_SUITE=4: RC4-MD5)
         self.maclen = 20 if suite == 5 else 16
         log('ssl: ClientHello, suites %s, using %#x' % ([hex(x) for x in suites], suite))
         sr = os.urandom(32)
@@ -167,7 +178,18 @@ class Ssl3:
         msgs += bytes([11]) + struct.pack('>I', len(cl))[1:] + cl
         msgs += b'\x0e\x00\x00\x00'
         self.hs += msgs
-        self.send_record(22, msgs)
+        if os.environ.get('WFC_SPLIT'):  # (WFC_SPLIT=1: each message its record, the bytes in pieces, slowly)
+            raw = b''
+            i = 0
+            while i < len(msgs):
+                n = 4 + int.from_bytes(msgs[i + 1:i + 4], 'big')
+                raw += bytes([22]) + b'\x03\x00' + struct.pack('>H', n) + msgs[i:i + n]
+                i += n
+            for k in range(0, len(raw), 300):
+                self.c.sendall(raw[k:k + 300])
+                time.sleep(0.05)
+        else:
+            self.send_record(22, msgs)
         # ClientKeyExchange
         t, cke = self.recv_record()
         if t != 22:
@@ -175,7 +197,7 @@ class Ssl3:
             raise EOFError
         self.hs += cke[:4 + int.from_bytes(cke[1:4], 'big')]
         enc = cke[4:4 + int.from_bytes(cke[1:4], 'big')]
-        m = pow(int.from_bytes(enc, 'big'), D, N).to_bytes(128, 'big')
+        m = pow(int.from_bytes(enc, 'big'), D, N).to_bytes((N.bit_length() + 7) // 8, 'big')
         assert m[0:2] == b'\x00\x02', 'bad premaster padding'
         pre = m[m.index(b'\x00', 2) + 1:]
         assert len(pre) == 48 and pre[:2] == b'\x03\x00', 'bad premaster'
