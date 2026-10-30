@@ -133,6 +133,9 @@ extern void Comm_Start(s32 a, u32 b, u32 c);
 extern int Net_PollConnected(void);
 extern u32 Net_GetError(void);
 extern u8 *Net_GetWifiFriendList(void);
+extern int GameStats_Upload(void), GameStats_PollUpload(void), GameStats_Download(void), GameStats_PollDownload(void);
+extern int AxMail_DownloadMail(void), AxMail_PollMail(void), AxMail_DownloadBbs(void), AxMail_PollBbs(void);
+extern void Net_ClearWifiError(void);
 extern void *PlayerActor_Get(s32 idx);
 extern s32 PlayerActor_RequestPitfallFall(void *o, s32 *unit, s32 b, s32 c);
 static const char *sWfcTest, *sPitfallTest;
@@ -282,12 +285,41 @@ void host_test_post_task(void) {
     int c = Net_PollConnected();
     u32 e = Net_GetError();
     if (e != lastErr) fprintf(stderr, "wfc: error %#x (frame %llu)\n", e, (unsigned long long)host_frame()), lastErr = e;
-    if (e) { step = 3; return; }
+    if (e && step < 4) { step = 3; return; }
     NetOverlay_AssertWifi();
     if (step == 1 && c) fprintf(stderr, "wfc: connected (frame %llu)\n", (unsigned long long)host_frame()), step = 2;
-    if (Net_GetWifiFriendList()) {
+    if (step < 4 && Net_GetWifiFriendList()) {
         fprintf(stderr, "wfc: logged in, friend list there (frame %llu)\n", (unsigned long long)host_frame());
-        step = 3;
+        step = 4;
+        {   // (a GameSpy HTTP post made and freed: what the stats upload builds first)
+            extern void *ghttpNewPost(void);
+            extern void ghiFreePost(void *p);
+            void *p = ghttpNewPost();
+            fprintf(stderr, "wfc: a post: %p\n", p);
+            if (p) ghiFreePost(p);
+        }
+    }
+    if (step >= 4) {  // then what Copper does next (SpNpcCopperTalk's scripts 0xb-0x12): each start, then its poll
+        static int (*const kStart[4])(void) = {GameStats_Download, GameStats_Upload, AxMail_DownloadMail, AxMail_DownloadBbs};
+        static int (*const kPoll[4])(void) = {GameStats_PollDownload, GameStats_PollUpload, AxMail_PollMail, AxMail_PollBbs};
+        static const char *const kName[4] = {"stats download", "stats upload", "mail", "bbs"};
+        static int k, started;
+        if (k >= 4) { fprintf(stderr, "wfc: all done (frame %llu)\n", (unsigned long long)host_frame()); step = 3; return; }
+        if (!started) {
+            started = 1;
+            int ok = kStart[k]();
+            fprintf(stderr, "wfc: %s started: %d (frame %llu)\n", kName[k], ok, (unsigned long long)host_frame());
+            if (!ok) k++, started = 0;
+            return;
+        }
+        if (Net_GetError()) {
+            fprintf(stderr, "wfc: %s: error %#x\n", kName[k], Net_GetError());
+            Net_ClearWifiError();
+            k++, started = 0;
+        } else if (kPoll[k]()) {
+            fprintf(stderr, "wfc: %s done (frame %llu)\n", kName[k], (unsigned long long)host_frame());
+            k++, started = 0;
+        }
     }
 }
 

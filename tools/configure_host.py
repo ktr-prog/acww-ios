@@ -209,6 +209,9 @@ PIE = "" if WIN else "-fPIE" if HOST64 else "-fno-pie"
 GAME_FLAGS = " ".join([
     *([M_FLAG] if M_FLAG else []), *([PIE] if PIE else []), "-fno-short-enums", "-fsigned-char", "-fshort-wchar", "-ffreestanding", "-nostdinc",
     "-fno-strict-aliasing", "-fno-builtin", "-O1", "-g", "-w", "-fno-omit-frame-pointer", "-falign-functions=4",
+    # (signed and pointer arithmetic wraps, as on the DS: the decompiled code counts pointers down to NULL and the like,
+    # which clang otherwise takes for loops without end - ghiNewPost's was, on iOS)
+    "-fno-strict-overflow",
     "-DMODERN", "-DHOST", f"-DGAME_VERSION_{args.version.upper()}", "-Iinclude",
     # the game's C library names renamed to ds_* (its own libc, apart from the host's)
     "-include", "include/host_libc_rename.h",

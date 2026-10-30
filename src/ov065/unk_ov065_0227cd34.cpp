@@ -273,11 +273,17 @@ s32 gpiProcessRecvBuddyMessage(GPConnection *h, const char *s) {
                 ERR1();
             }
             q = (u8 *)n->buddyStatus;
+#ifdef HOST64
+            // (the whole status, as in ghiNewPost: a pointer counted down to NULL is a loop without end for clang)
+            (void)k;
+            for (u32 j = 0; j < sizeof(GPIBuddyStatus); j++) q[j] = 0;
+#else
             k = (u8 *)0x18;
             do {
                 *q++ = 0;
                 k--;
             } while (k != NULL);
+#endif
             {
                 s32 *cnt = &c->numBuddies;
                 s32 o = *cnt;

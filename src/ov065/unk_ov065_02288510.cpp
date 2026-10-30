@@ -110,20 +110,38 @@ void QEStartQuery(Mgr *m, Ent *e) {
             if (e->state & 4) {
                 u8 *d = buf;
                 u8 *sp = (u8 *)"\\basic\\\\info\\";
+#ifdef HOST64
+                // (a counter, not a pointer counted down to NULL: undefined in C, a loop without end for clang)
+                s32 k = 13;
+                do {
+                    *d++ = *sp++;
+                    k--;
+                } while (k != 0);
+#else
                 u8 *k = (u8 *)13;
                 do {
                     *d++ = *sp++;
                     k--;
                 } while (k != NULL);
+#endif
                 len = 13;
             } else {
                 u8 *d = buf;
                 u8 *sp = (u8 *)"\\status\\";
+#ifdef HOST64
+                // (a counter, not a pointer counted down to NULL: undefined in C, a loop without end for clang)
+                s32 k = 8;
+                do {
+                    *d++ = *sp++;
+                    k--;
+                } while (k != 0);
+#else
                 u8 *k = (u8 *)8;
                 do {
                     *d++ = *sp++;
                     k--;
                 } while (k != NULL);
+#endif
                 len = 8;
             }
         }

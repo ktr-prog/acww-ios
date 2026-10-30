@@ -997,12 +997,19 @@ GHIPost *ghiNewPost(void) {
         return NULL;
     }
     q = (u8 *)t;
-    k = (u8 *)0x14;
     z = Unk_ov065_0227acfc_Z_0;
+#ifdef HOST64
+    // (the whole post, 0x14 bytes on the DS; the DS's count down in a pointer to NULL is undefined in C, and clang
+    // made it a loop without end - it wrote on until a fault: the crash connecting, ghiNewPost+0x14)
+    (void)k;
+    for (i = 0; i < sizeof(GHIPost); i++) q[i] = z;
+#else
+    k = (u8 *)0x14;
     do {
         *q++ = z;
         k--;
     } while (k != NULL);
+#endif
     t->autoFree = 1;
     t->data = ArrayNew(sizeof(GHIPostData), 0, (ArrayElementFreeFn)ghiPostDataFree);
     if (t->data == NULL) {
