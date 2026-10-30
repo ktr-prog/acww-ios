@@ -332,7 +332,11 @@ u32 Net_WlxIsExchangeDone(void *p);
 extern u8 data_021f4bc0[0xdb4];
 #endif
 #ifndef PROTO_LOCAL_data_021f49e0
+#ifdef HOST64
+extern u8 data_021f49e0[0xe8];
+#else
 extern u8 data_021f49e0[0xe0];
+#endif
 #endif
 #ifndef PROTO_LOCAL_data_021f4950
 extern OSMessage data_021f4950[16];

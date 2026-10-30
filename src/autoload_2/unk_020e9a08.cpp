@@ -903,10 +903,10 @@ extern "C" void **Net_GetScanResults(void) {
     return data_021f4910;
 }
 
-// (a copy of the beacon: 0xe0 bytes, the DS size of LocalWlBeacon, unk_ov066_0225f1a0.cpp)
+// (a copy of the beacon: LocalWlBeacon's size, 0xe0 bytes on the DS, unk_ov066_0225f1a0.cpp)
 extern "C" s32 Net_ConnectToParent(void *p) {
     if (LocalWl_GetState() == 7 && p != NULL) {
-        MI_CpuCopy8(p, data_021f49e0, 0xe0);
+        MI_CpuCopy8(p, data_021f49e0, sizeof data_021f49e0);
         return LocalWl_ConnectToParent((LocalWlBeacon *)data_021f49e0, 0, 0);
     }
     return 0;
@@ -1184,7 +1184,11 @@ extern "C" u32 Net_WlxIsExchangeDone(void *p) {
 extern "C" {
 u8 data_021f4bc0[0xdb4] __attribute__((aligned(8)));  // the DWC core's control block (DwcCore_Init: DwcControl)
 NetSlot sSendSlots[16];      // send slots (the DS's interior labels data_021f4ac4 / 4ac8 / 4acc: slot 0's members)
+#ifdef HOST64
+u8 data_021f49e0[0xe8] __attribute__((aligned(8)));  // (LocalWlBeacon on 64-bit hosts: its owner list pointer is 8 bytes)
+#else
 u8 data_021f49e0[0xe0] __attribute__((aligned(8)));  // the beacon being connected to (Net_ConnectToParent)
+#endif
 Ent sWifiPingState[20];      // ping state per aid (data_021f4992: interior label)
 OSMessage data_021f4950[16];  // sSendQueue's messages (slot numbers)
 void *data_021f4910[8];      // Net_GetScanResults
