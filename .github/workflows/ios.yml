@@ -52,7 +52,7 @@ jobs:
             -o build/net_nat_test
           # (its lines also as annotations: what happened is readable without the log)
           set -o pipefail
-          timeout 120 build/net_nat_test 2>&1 | tee build/net_nat_test.txt
+          build/net_nat_test 2>&1 | tee build/net_nat_test.txt  # (it gives up by itself after 90 s)
           rc=$?
           if [ $rc -ne 0 ]; then head -n 20 build/net_nat_test.txt | sed 's/^/::warning::/'; fi
           exit $rc
