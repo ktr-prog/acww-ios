@@ -10,8 +10,12 @@ extern "C" {
 
 enum {
     FEAT_CIRCLE_PAD,  // analog walking: the touch D-pad becomes a circle pad, a controller's left stick is analog
+    FEAT_FPS,         // the game's own frame rate (its main loop's turns a second) over the top screen's corner
     FEAT_COUNT
 };
+
+// the game's main loop's turns so far (frontend.c, after each turn's tasks): FEAT_FPS counts them
+extern volatile unsigned long long gHostGameFrames;
 
 void features_init(const char *path);  // the file's settings (missing: all off)
 int feature_on(int f);

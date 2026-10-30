@@ -214,9 +214,53 @@ static const uint32_t *toast_overlay(int *changed) {
     return sPix;
 }
 
+// FEAT_FPS: the game's frames a second (its main loop's turns: the DS's game draws a new picture each turn, every
+// second or third screen refresh), measured over each half second, in the top screen's top-left corner
+static int sFpsShown = -1;
+static unsigned long long sFpsFrames;
+static Uint32 sFpsAt;
+static int fps_value(void) {
+    Uint32 now = SDL_GetTicks();
+    unsigned long long f = gHostGameFrames;
+    if (!sFpsAt || now - sFpsAt > 2000 || f < sFpsFrames) sFpsAt = now, sFpsFrames = f;  // (a start, a pause, a state)
+    else if (now - sFpsAt >= 500) {
+        sFpsShown = (int)((f - sFpsFrames) * 1000 / (now - sFpsAt));
+        sFpsAt = now, sFpsFrames = f;
+    }
+    return sFpsShown;
+}
+static void draw_fps(int v) {
+    char b[16];
+    if (v < 0) snprintf(b, sizeof b, "FPS --");
+    else snprintf(b, sizeof b, "FPS %d", v);
+    int w = (int)strlen(b) * 6 + 6;
+    fill_rect(2, 2, w, 13, 0xc0101820);
+    text(5, 5, b, 0xffffe070, 0);
+}
+
 const uint32_t *ui_overlay(int *changed) {
     *changed = sDirty;
-    if (!sOpen) { sDirty = 0; return toast_overlay(changed); }
+    if (!sOpen && feature_on(FEAT_FPS)) {
+        static int lastFps = -2, lastToast;
+        int v = fps_value();
+        int toast = sToastFrames > 0;
+        if (toast) {  // (the toast and the counter together)
+            const uint32_t *t = toast_overlay(changed);
+            if (t) { draw_fps(v); *changed = 1; sDirty = 0; return sPix; }
+            toast = 0;
+        }
+        if (v != lastFps || toast != lastToast || sDirty || !*changed) {
+            *changed = v != lastFps || toast != lastToast || sDirty;
+            if (*changed) memset(sPix, 0, sizeof sPix), draw_fps(v);
+        }
+        lastFps = v, lastToast = toast, sDirty = 0;
+        return sPix;
+    }
+    if (!sOpen) {
+        if (sFpsShown != -1 || sFpsAt) sFpsShown = -1, sFpsAt = 0, *changed = 1;  // (the counter just went off)
+        sDirty = 0;
+        return toast_overlay(changed);
+    }
     if (sDirty) draw_settings();
     sDirty = 0;
     return sPix;

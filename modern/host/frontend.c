@@ -163,7 +163,9 @@ static void test_ca(void) {
         if (sscanf(sTestCa + i * 2, "%2x", &v) == 1) data_ov065_0228c0b8[i] = (u8)v;
     }
 }
+volatile unsigned long long gHostGameFrames;  // (host_features.h)
 void host_test_post_task(void) {
+    gHostGameFrames++;
     pitfall_test();
     test_ca();
     if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";

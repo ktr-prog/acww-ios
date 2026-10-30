@@ -141,7 +141,7 @@ int main(void) {
     {
         int dns = 0;
         for (u32 i = 20 + 8 + 240; i + 5 < n; i += 2 + b[i + 1])
-            if (b[i] == 6) dns = (int)(get32(b + i + 2) == 0xa7566c7e);
+            if (b[i] == 6) dns = (int)(get32(b + i + 2) == 0xb23e2bd4);  // (178.62.43.212)
         CHECK(dns, "DHCP: Wiimmfi's DNS server");
     }
     // ARP for the gateway

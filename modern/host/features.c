@@ -9,6 +9,7 @@ static const struct {
     const char *key, *name;
 } kFeatures[FEAT_COUNT] = {
     [FEAT_CIRCLE_PAD] = {"circle_pad", "CIRCLE PAD"},
+    [FEAT_FPS] = {"fps", "FPS COUNTER"},
 };
 static int sOn[FEAT_COUNT];
 static char sPath[1024];

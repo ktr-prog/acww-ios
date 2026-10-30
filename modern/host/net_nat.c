@@ -7,7 +7,7 @@
 // sockets (non-blocking, polled from the runtime's event loop): a UDP socket per DS port; a TCP connection is ended
 // here (the DS's segments acknowledged, its data written to the host's socket; the host's data sent back in segments
 // the DS's window and MSS allow, resent when not acknowledged). The DNS server the DS is given is Wiimmfi's
-// (167.86.108.126, ACWW_WIIMMFI_DNS another): the game's queries for nintendowifi.net and gamespy.com go there, which
+// (178.62.43.212, ACWW_WIIMMFI_DNS another): the game's queries for nintendowifi.net and gamespy.com go there, which
 // is how Wiimmfi takes a real DS's traffic too. Outside the save states' range (sockets are this launch's).
 #include "net_nat.h"
 
@@ -40,7 +40,7 @@ int nat_take(u8 *buf, u32 cap, u32 *len) { (void)buf, (void)cap, (void)len; retu
 #define GW_IP 0x0a000001u   // 10.0.0.1
 #define DS_IP 0x0a00000au   // 10.0.0.10
 #define NETMASK 0xffffff00u
-#define DNS_IP_DEFAULT 0xa7566c7eu  // 167.86.108.126: Wiimmfi's DNS server
+#define DNS_IP_DEFAULT 0xb23e2bd4u  // 178.62.43.212: Wiimmfi's DNS server for the DS (167.86.108.126 is no more)
 #define MSS_MAX 1360        // (the DS's MTU in its Wi-Fi settings is 1400)
 #define TCP_BUF 65536
 #define MAX_TCP 24
@@ -49,7 +49,7 @@ int nat_take(u8 *buf, u32 cap, u32 *len) { (void)buf, (void)cap, (void)len; retu
 
 static int sOn, sLog = -1;
 static u8 sDsMac[6];
-static u32 sDnsIp;
+static u32 sDnsIp, sDnsAsked;  // Wiimmfi's DNS server; the one the DS asked
 
 static u64 now_ms(void) { return host_plat_time_ns() / 1000000u; }
 #define LOG(...) do { if (sLog) fprintf(stderr, "nat: " __VA_ARGS__); } while (0)
@@ -266,7 +266,7 @@ static void udp_poll(void) {
             u->used = now_ms();
             u16 fport;
             u32 src = peer_ip(&from, &fport);
-            if (src == sDnsIp && fport == 53) src = DNS_IP_DEFAULT;  // (and the answers from it)
+            if (src == sDnsIp && fport == 53 && sDnsAsked) src = sDnsAsked;
             send_udp(src, fport, DS_IP, u->dsPort, buf, (u32)r);
         }
         if (now_ms() - u->used > 180000) { close(u->fd); u->fd = 0; }
@@ -575,8 +575,9 @@ static void ip_in(const u8 *ip, u32 n) {
         if (ul < 8 || ul > len) return;
         if (dport == 67) { dhcp_in(p + 8, ul - 8); return; }
         if (dst == GW_IP || dst == 0xffffffffu || (dst & ~NETMASK) == ~NETMASK) return;
-        // (ACWW_WIIMMFI_DNS: the DS's settings name Wiimmfi's DNS server; its questions go to the one given instead)
-        if (dport == 53 && dst == DNS_IP_DEFAULT) dst = sDnsIp;
+        // every DNS question goes to Wiimmfi's server (sDnsIp), whichever server the game's settings name (a save's
+        // settings from an older version name an older address); the answers come back from the address asked
+        if (dport == 53) sDnsAsked = dst, dst = sDnsIp;
         udp_out(sport, dst, dport, p + 8, ul - 8);
         break;
     }

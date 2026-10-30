@@ -101,7 +101,7 @@ away) and open it again after changing it.
   game on the same Wi-Fi network, found with Bonjour (iOS asks once for the local network), and **Nintendo Wi-Fi
   Connection**, which goes to Wiimmfi: the game's Wi-Fi connection 1 is an access point the app plays ("ACWW
   Wiimmfi"), and the game's traffic goes through the device's internet connection with Wiimmfi's DNS server
-  (167.86.108.126), which is how Wiimmfi serves a real DS (wiimmfi.de). The game's WFC ID is kept next to the save file
+  (178.62.43.212; every DNS question the game asks goes there), which is how Wiimmfi serves a real DS (wiimmfi.de). The game's WFC ID is kept next to the save file
   (`<name>.wfc`): keep it with the save. There is nothing to set up: the title's "Other things" has no Nintendo WFC
   settings (they would need the system to restart), and networks with only IPv6 (NAT64) work too.
 - **The game's own reset** (after a broken wireless connection) closes the app with a message. Open it again.

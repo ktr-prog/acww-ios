@@ -210,12 +210,13 @@ static void wfc_load(void) {
     if (fread(b, 1, 0x400, f) == 0x400) memcpy(sNvram + wfc_base(), b, 0x400);
     fclose(f);
 }
+static const u8 kWfcDns[4] = {178, 62, 43, 212};  // Wiimmfi's DNS server for the DS
 static void wfc_sync(void) {
     if (!sNvramSize || wfc_base() + 0x400 > sNvramSize) return;
     u8 *w = sNvram + wfc_base();
     int on = host_wiimmfi_on() && nat_supported();
     int ours = wfc_page_ok(w) && w[0xe7] == 0 && !memcmp(w + 0x40, NAT_AP_SSID, sizeof NAT_AP_SSID);
-    if (on == ours) return;
+    if (on == ours && !(ours && memcmp(w + 0xc8, kWfcDns, 4))) return;  // (a DNS server from an older version: set again)
     if (on) {
         if (!wfc_page_ok(w) || !wfc_page_ok(w + 0x100) || !wfc_page_ok(w + 0x200) || !wfc_page_ok(w + 0x300)) {
             // (a fresh area, or a damaged one: as DWC would set it up - no connections, no ID yet (made at the first
@@ -230,7 +231,7 @@ static void wfc_sync(void) {
         }
         memset(w, 0, 0xef);
         memcpy(w + 0x40, NAT_AP_SSID, sizeof NAT_AP_SSID - 1);
-        w[0xc8] = 167, w[0xc9] = 86, w[0xca] = 108, w[0xcb] = 126;  // the DNS server: Wiimmfi's (the rest: DHCP)
+        memcpy(w + 0xc8, kWfcDns, 4);  // the DNS server: Wiimmfi's (the rest: DHCP; net_nat.c sends every question there)
         w[0xea] = 0x78, w[0xeb] = 0x05;  // MTU 1400
         w[0xe6] = 0;  // no WEP
         w[0xe7] = 0;  // set up
