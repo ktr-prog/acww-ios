@@ -10280,7 +10280,7 @@ extern "C" void PlayerActor_SetupPitfallStruggle(Obj *o, s32 *a) {
     s32 t;
     (o)->startAnim(0x92, 3, 0);
     o->bodyModel.frameStep = 0x800;
-    t = a[3];
+    t = *(s32 *)((PlayerActionRequest *)(void *)a)->unk_0c_b;  // (the payload: 0xc on the DS)
     Rec *r = (Rec *)&o->actionWork;
     r->unk_04 = 0x800;
     r->unk_08 = 0x800;

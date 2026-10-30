@@ -100,7 +100,14 @@ s32 NetCheck_Start(NetCheckParams *cfg) {
     }
     MI_CpuFill8(sNetCheck, 0, sizeof(NetCheckWork));
     sNetCheck->errorCode = -0x1869f;
+#ifdef HOST64
+    // (field by field: the word view is the DS's 32-bit layout, and the function pointers here are 8 bytes)
+    sNetCheck->allocFunc = cfg->allocFunc;
+    sNetCheck->freeFunc = cfg->freeFunc;
+    sNetCheck->pad110 = cfg->unk_08;
+#else
     *(NetCheckParamsWords *)&sNetCheck->allocFunc = *(NetCheckParamsWords *)cfg;
+#endif
     if (sNetCheckHttp != 0) {
         return 4;
     }
@@ -337,8 +344,16 @@ void NetCheck_ThreadMain(void) {
                 if (NasAuth_GetState() == 9) {
                     sNetCheck->errorCode = -1;
                 } else {
+#ifdef HOST64
+                    {   // (the whole result, 0x1c4 bytes: on the DS it ran on into the frame's next local)
+                        s32 res[0x1c4 / 4];
+                        NasAuth_GetResult(res);
+                        sNetCheck->errorCode = res[0];
+                    }
+#else
                     NasAuth_GetResult(&bb.e);
                     sNetCheck->errorCode = bb.e;
+#endif
                 }
                 NetCheck_SetState(6);
                 goto end;

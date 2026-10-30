@@ -193,7 +193,7 @@ s32 DwcNet_GetHeaderSize(s32 m) {
 
 void DwcNet_InitChannelTable(void *p) {
     sDwcNetChannels = (DwcNetChannelTable *)p;
-    MI_CpuFill8(p, 0, 0x614);
+    MI_CpuFill8(p, 0, sizeof(DwcNetChannelTable));  // (0x614 on the DS)
     sDwcNetChannels->maxChunkSize = 0x5b9;
 }
 

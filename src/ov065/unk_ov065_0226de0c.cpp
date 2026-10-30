@@ -101,7 +101,19 @@ s32 sDwcHttpTestServer;
 s32 DwcHttp_Init(DwcHttp *c, DwcHttpParams *cfg) {
     MI_CpuFill8(c, 0, sizeof(DwcHttp));
     c->contentLength = -1;
+#ifdef HOST64
+    // (field by field: the word view is the DS's 32-bit layout, and the pointers here are 8 bytes)
+    c->url = cfg->url;
+    c->method = cfg->method;
+    c->userRecvBuffer = cfg->userRecvBuffer;
+    c->rxBufSize = cfg->rxBufSize;
+    c->allocFunc = cfg->allocFunc;
+    c->freeFunc = cfg->freeFunc;
+    c->useTestServer = cfg->useTestServer;
+    c->timeoutMs = cfg->timeoutMs;
+#else
     *(DwcHttpParamsWords *)&c->url = *(DwcHttpParamsWords *)cfg;
+#endif
     c->lowRecvBuf = c->allocFunc("http->lowrecvbuf", 0xb68);
     if (c->lowRecvBuf == NULL) {
         c->result = 1;

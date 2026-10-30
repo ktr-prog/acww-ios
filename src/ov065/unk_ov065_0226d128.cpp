@@ -208,6 +208,9 @@ s32 NasAuth_GetState(void) {
 void NasAuth_GetResult(s32 *p) {
     if (sNasAuth == NULL) {
         MI_CpuFill8(p, 0, 0x1c4);
+#ifdef HOST64
+        return;  // (the DS went on to copy from address 8)
+#endif
     }
     MI_CpuCopy8(&sNasAuth->resultCode, p, 0x1c4);
     s32 v = p[0];

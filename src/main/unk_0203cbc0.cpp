@@ -28,7 +28,12 @@ extern "C" s32 Stub_ReturnFalse(void) { return 0; }
 
 extern "C" void Main_PreTaskStub(void) {}
 
+#ifdef HOST64
+extern "C" void host_test_post_task(void);  // (modern/host/frontend.c: test scripts' hooks, ACWW_WFC_TEST)
+extern "C" void Main_PostTaskStub(void) { host_test_post_task(); }
+#else
 extern "C" void Main_PostTaskStub(void) {}
+#endif
 
 extern "C" void ScreenLayers_AcquireStub(void) {}
 

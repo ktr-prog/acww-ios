@@ -117,6 +117,66 @@ static u32 goto_keys(void) {
     return k;
 }
 
+// ACWW_WFC_TEST=<frame>: from that frame (in the field), what the gate's Copper does to connect to Nintendo WFC
+// (SpNpcCopperTalk::startWifiLogin, waitWifiLogin: src/ov048), with "wfc:" lines on how it goes. Called from the game's
+// main loop after the frame's tasks (Main_PostTaskStub).
+#if defined(__APPLE__)
+#define CXX_NAME(n) "_" n
+#else
+#define CXX_NAME(n) n
+#endif
+extern void NetOverlay_LoadWifi(void);
+extern void NetOverlay_AssertAny(void) __asm__(CXX_NAME("_Z20NetOverlay_AssertAnyv"));  // (C++ functions)
+extern void NetOverlay_AssertWifi(void) __asm__(CXX_NAME("_Z21NetOverlay_AssertWifiv"));
+extern void Comm_Start(s32 a, u32 b, u32 c);
+extern int Net_PollConnected(void);
+extern u32 Net_GetError(void);
+extern u8 *Net_GetWifiFriendList(void);
+extern void *PlayerActor_Get(s32 idx);
+extern s32 PlayerActor_RequestPitfallFall(void *o, s32 *unit, s32 b, s32 c);
+static const char *sWfcTest, *sPitfallTest;
+HOST_STATE_KEEP(sWfcTest)
+HOST_STATE_KEEP(sPitfallTest)
+// ACWW_PITFALL_TEST=<frame>: the player falls into a pitfall where they stand
+static void pitfall_test(void) {
+    if (!sPitfallTest) sPitfallTest = getenv("ACWW_PITFALL_TEST") ? getenv("ACWW_PITFALL_TEST") : "";
+    static int done;
+    unsigned at;
+    if (done || !*sPitfallTest || sscanf(sPitfallTest, "%u", &at) != 1 || host_frame() < at) return;
+    done = 1;
+    const s32 *pos = PlayerActor_GetBodyPos(4);
+    void *o = PlayerActor_Get(4);
+    if (!pos || !o) return;
+    s32 unit[2] = {pos[0] / 8192, pos[2] / 8192};
+    fprintf(stderr, "pitfall: at %d,%d: %d\n", unit[0], unit[1], PlayerActor_RequestPitfallFall(o, unit, 6, -1));
+}
+void host_test_post_task(void) {
+    pitfall_test();
+    if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";
+    static int step;
+    static u32 lastErr = ~0u;
+    unsigned at;
+    if (!*sWfcTest || sscanf(sWfcTest, "%u", &at) != 1 || host_frame() < at || step == 3) return;
+    if (step == 0) {
+        fprintf(stderr, "wfc: connecting (frame %llu)\n", (unsigned long long)host_frame());
+        NetOverlay_LoadWifi();
+        Comm_Start(4, 4, 2);
+        step = 1;
+        return;
+    }
+    NetOverlay_AssertAny();
+    int c = Net_PollConnected();
+    u32 e = Net_GetError();
+    if (e != lastErr) fprintf(stderr, "wfc: error %#x (frame %llu)\n", e, (unsigned long long)host_frame()), lastErr = e;
+    if (e) { step = 3; return; }
+    NetOverlay_AssertWifi();
+    if (step == 1 && c) fprintf(stderr, "wfc: connected (frame %llu)\n", (unsigned long long)host_frame()), step = 2;
+    if (Net_GetWifiFriendList()) {
+        fprintf(stderr, "wfc: logged in, friend list there (frame %llu)\n", (unsigned long long)host_frame());
+        step = 3;
+    }
+}
+
 // at each VBlank: publish the frame, take the input
 void frontend_frame(void) {
     u16 keyinput = 0x3ff;  // KEYINPUT: released bits are 1

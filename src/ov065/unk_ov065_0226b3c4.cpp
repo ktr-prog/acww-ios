@@ -1175,7 +1175,7 @@ void WifiAp_OnLinkNotify(WifiLinkEvent *m) {
 void WifiAp_OnApFound(WMBssDesc *rec) {
     s32 r6 = -1;
     WifiApContext *ctx = (WifiApContext *)WifiAp_GetBlock(0x10);
-    ((u8 *)WifiAp_GetBlock(1))[0xb] = 1;
+    ((WifiApControl *)WifiAp_GetBlock(1))->anyApFound = 1;  // (0xb on the DS)
     switch (WifiAp_GetState()) {
     case 3: {
         u16 proto = rec->ssidLength;

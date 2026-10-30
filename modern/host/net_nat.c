@@ -225,7 +225,9 @@ static void udp_poll(void) {
             ssize_t r = recvfrom(u->fd, buf, sizeof buf, 0, (struct sockaddr *)&from, &fl);
             if (r < 0) break;
             u->used = now_ms();
-            send_udp(ntohl(from.sin_addr.s_addr), ntohs(from.sin_port), DS_IP, u->dsPort, buf, (u32)r);
+            u32 src = ntohl(from.sin_addr.s_addr);
+            if (src == sDnsIp && ntohs(from.sin_port) == 53) src = DNS_IP_DEFAULT;  // (and the answers from it)
+            send_udp(src, ntohs(from.sin_port), DS_IP, u->dsPort, buf, (u32)r);
         }
         if (now_ms() - u->used > 180000) { close(u->fd); u->fd = 0; }
     }
@@ -515,6 +517,8 @@ static void ip_in(const u8 *ip, u32 n) {
     u32 src = get32(ip + 12), dst = get32(ip + 16);
     const u8 *p = ip + hl;
     u32 len = tot - hl;
+    if (sLog >= 2)  // (ACWW_NAT_LOG=2: every packet from the DS)
+        LOG("IP %u to %d.%d.%d.%d, %u bytes\n", ip[9], dst >> 24, dst >> 16 & 255, dst >> 8 & 255, dst & 255, len);
     switch (ip[9]) {
     case 1:  // ICMP: echo answered for any address
         if (len >= 8 && p[0] == 8) {
@@ -533,6 +537,8 @@ static void ip_in(const u8 *ip, u32 n) {
         if (ul < 8 || ul > len) return;
         if (dport == 67) { dhcp_in(p + 8, ul - 8); return; }
         if (dst == GW_IP || dst == 0xffffffffu || (dst & ~NETMASK) == ~NETMASK) return;
+        // (ACWW_WIIMMFI_DNS: the DS's settings name Wiimmfi's DNS server; its questions go to the one given instead)
+        if (dport == 53 && dst == DNS_IP_DEFAULT) dst = sDnsIp;
         udp_out(sport, dst, dport, p + 8, ul - 8);
         break;
     }
@@ -546,6 +552,7 @@ void nat_from_ds(const u8 dst[6], const u8 *llc, u32 len) {
     (void)dst;
     if (!sOn || len < 8 || llc[0] != 0xaa || llc[1] != 0xaa) return;
     u32 type = get16(llc + 6);
+    if (sLog >= 2 && type != 0x0800) LOG("frame type %04x, %u bytes\n", type, len);
     if (type == 0x0800) ip_in(llc + 8, len - 8);
     else if (type == 0x0806) arp_in(llc + 8, len - 8);
 }
