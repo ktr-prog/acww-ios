@@ -329,7 +329,11 @@ BOOL Net_WlxIsReady(void *p);
 u32 Net_WlxIsExchangeDone(void *p);
 #endif
 #ifndef PROTO_LOCAL_data_021f4bc0
+#ifdef HOST64
+extern u8 data_021f4bc0[0x1000];
+#else
 extern u8 data_021f4bc0[0xdb4];
+#endif
 #endif
 #ifndef PROTO_LOCAL_data_021f49e0
 #ifdef HOST64

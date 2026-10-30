@@ -1182,7 +1182,13 @@ extern "C" u32 Net_WlxIsExchangeDone(void *p) {
 // this file pools: it is built with -str reuse, see the first line) and bss (autoload_3 0x021f488c-0x021f5974). This
 // definition order gives the original order after mwcc's size sort.
 extern "C" {
+#ifdef HOST64
+// (DwcControl and, after it, the channel table (DwcNet_InitChannelTable): 0xfa8 bytes on 64-bit hosts - in the DS's
+// 0xdb4 the table ran past the end into the next variables, the task lists in the iOS build: a crash connecting)
+u8 data_021f4bc0[0x1000] __attribute__((aligned(8)));
+#else
 u8 data_021f4bc0[0xdb4] __attribute__((aligned(8)));  // the DWC core's control block (DwcCore_Init: DwcControl)
+#endif
 NetSlot sSendSlots[16];      // send slots (the DS's interior labels data_021f4ac4 / 4ac8 / 4acc: slot 0's members)
 #ifdef HOST64
 u8 data_021f49e0[0xe8] __attribute__((aligned(8)));  // (LocalWlBeacon on 64-bit hosts: its owner list pointer is 8 bytes)

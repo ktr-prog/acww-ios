@@ -1,6 +1,7 @@
 #include "uptr.h"
 // mwcc-flags: -O4,p -str reuse
 #include "types.h"
+#include "net/DwcNetChannelTable.h"
 #include "net/NetCheck.h"
 #include "net/gpiCallback.h"
 #include "net/NasAuthParams.h"
@@ -291,6 +292,10 @@ void DwcCore_Init(DwcControl *g, DwcUserData *a1, u32 productId, const char *a3,
                         friendListLen);
     DwcMatch_InitControl(&sDwcControl->matchControl, &sDwcControl->gpConnection, sDwcControl,
                         &sDwcControl->gt2ConnectedCallback, data_ov065_02291104, data_ov065_02291204, friendList, friendListLen);
+#ifdef HOST64
+    // (the table follows the control block, in the caller's buffer: data_021f4bc0, 0x1000 bytes on 64-bit hosts)
+    static_assert(__builtin_offsetof(DwcControl, netChannelTable) + sizeof(DwcNetChannelTable) <= 0x1000, "DwcControl");
+#endif
     DwcNet_InitChannelTable(&sDwcControl->netChannelTable);
     u32 n;
     if (STD_GetStringLength(a3) < 0x100) {
