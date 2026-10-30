@@ -150,6 +150,12 @@ extern "C" void Heap_HostTrace(Heap *h, HeapAllocHook a, HeapFreeHook f) {
     sHeapFreeHook = f;
     if (h != NULL) h->heapFlags |= 0xc00;
 }
+// (and its free space: in all, the largest block)
+extern "C" void Heap_HostFreeSpace(Heap *h, u32 *all, u32 *largest) {
+    *all = h->getFreeSize();
+    *largest = h->getMaxFreeBlockSize();
+}
+extern "C" void *Heap_HostHandle(Heap *h) { return h->heapHandle; }
 #endif
 
 extern "C" void Heap_OnThreadSwitch(void *a, void *b) {

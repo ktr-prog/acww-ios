@@ -60,11 +60,11 @@ s32 WifiAp_Init(WifiApConfig *cfg) {
     fc->furthestState = 1;
     fc->allocMask = 1;
     sWifiApContext = (WifiApContext *)WifiAp_AllocBlock(0x10, sizeof(WifiApContext));
-    sWifiApLinkWork = WifiAp_AllocBlock(2, 0x2300);
+    sWifiApLinkWork = WifiAp_AllocBlock(2, WIFI_LINK_WORK_SIZE);
     sWifiApSocketConfig = WifiAp_AllocBlock(4, sizeof(SockStartupConfig));  // (0x58 on the DS)
     sWifiApAllocator = (WifiApAllocator *)WifiAp_AllocBlock(8, sizeof(WifiApAllocator));  // (0xc on the DS)
     { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApContext, sizeof(WifiApContext)); }
-    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApLinkWork, 0x2300); }
+    { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApLinkWork, WIFI_LINK_WORK_SIZE); }
     { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApSocketConfig, sizeof(SockStartupConfig)); }
     { volatile u32 z = 0; MIi_CpuClear32(z, sWifiApAllocator, sizeof(WifiApAllocator)); }
     ec = sWifiApContext;
@@ -77,7 +77,7 @@ s32 WifiAp_Init(WifiApConfig *cfg) {
     ec->apFilter = cfg->apFilter;
     ec->netCheckMode = cfg->netCheckMode;
     DWCi_BM_GetApInfo(ec);
-    r = WifiLink_Init(sWifiApLinkWork, 0x2300);
+    r = WifiLink_Init(sWifiApLinkWork, WIFI_LINK_WORK_SIZE);
     if (r == 1 || r >= 4) {
         WifiAp_FreeAll();
         return 0;
@@ -208,7 +208,7 @@ void WifiAp_FreeAll() {
     if ((f->allocMask & 2) != 0) {
         void *o = WifiAp_GetBlock(2);
         f->allocMask &= ~2;
-        f->unk_04(2, o, 0x2300);
+        f->unk_04(2, o, WIFI_LINK_WORK_SIZE);
     }
     if ((f->allocMask & 1) != 0) {
         f->allocMask &= ~1;

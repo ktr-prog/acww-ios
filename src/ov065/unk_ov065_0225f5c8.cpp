@@ -143,7 +143,11 @@ s32 SockCore_OnUdpReceive(u8 *data, u32 len, IpSocket *ip)
     u32 irq = OS_DisableInterrupts();
 
     if (c->cap >= c->used + len) {
+#ifdef HOST64
+        Node *n = (Node *)sSockCoreConfig->alloc(len + __builtin_offsetof(Node, data));  // (the header: 12 bytes on the DS, 16 here)
+#else
         Node *n = (Node *)sSockCoreConfig->alloc(len + 12);
+#endif
         if (n != NULL) {
             c->used += len;
             n->next = NULL;

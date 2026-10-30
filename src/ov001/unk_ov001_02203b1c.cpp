@@ -4,6 +4,7 @@
 #include "host_shared_calls.h"
 #include "net/WifiLinkEvent.h"
 #include "net/WifiLinkConfig.h"
+#include "net/WifiLinkWork.h"
 #include "nitro/os_alarm.h"
 #include "uptr.h"
 #include "net/SimpleStart.h"
@@ -1021,7 +1022,7 @@ s32 SimpleStart_WcmInit(SimpleStartWcmNotifyFunc cb, u8 *buf, s32 size) {
     data_ov001_0222c858 = (WifiLinkConfig *)a;
     b = (a + 0x2f) & ~(uptr)0x1f;
     data_ov001_0222c88c = (u8 *)b;
-    b = (b + 0x231f) & ~(uptr)0x1f;
+    b = (b + WIFI_LINK_WORK_SIZE + 0x1f) & ~(uptr)0x1f;
     data_ov001_0222c89c = (u8 *)b;
     b += 0xdf;
     b &= ~(uptr)0x1f;
@@ -1031,7 +1032,7 @@ s32 SimpleStart_WcmInit(SimpleStartWcmNotifyFunc cb, u8 *buf, s32 size) {
     data_ov001_0222c858->dmaNo = 3;
     sSimpleStartWcmNotifyCb = cb;
     if (sSimpleStartWcmState == 0) {
-        if (WifiLink_Init(data_ov001_0222c88c, 0x2300) != 0) {
+        if (WifiLink_Init(data_ov001_0222c88c, WIFI_LINK_WORK_SIZE) != 0) {
             OS_RestoreInterrupts(e);
             return 0;
         }

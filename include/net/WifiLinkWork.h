@@ -55,4 +55,12 @@ struct WifiLinkWork {
     /* 0x22fa */ u8 unk_22fa[6];
 };
 
+// the work's size as given to WifiLink_Init: 0x2300 on the DS; on 64-bit hosts the struct is larger (pointers, the
+// alarm), so the struct's own size, in whole 32-byte units
+#ifdef HOST64
+#define WIFI_LINK_WORK_SIZE ((sizeof(WifiLinkWork) + 0x1f) & ~(u32)0x1f)
+#else
+#define WIFI_LINK_WORK_SIZE 0x2300
+#endif
+
 #endif

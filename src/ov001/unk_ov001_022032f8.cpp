@@ -2,6 +2,7 @@
 #include "types.h"
 #include "net/WifiLinkEvent.h"
 #include "net/WifiLinkConfig.h"
+#include "net/WifiLinkWork.h"
 #include "uptr.h"
 #include "proto/ov001/unk_ov001_022032f8.h"
 
@@ -404,7 +405,7 @@ extern "C" s32 Aoss_WcmInit(void *fn, void *buf, u32 size) {
     sAossWcmConfig = p;
     uptr t = ((uptr)p + 0x2f) & ~(uptr)0x1f;
     sAossWcmWork = (u8 *)t;
-    t = (t + 0x231f) & ~(uptr)0x1f;
+    t = (t + WIFI_LINK_WORK_SIZE + 0x1f) & ~(uptr)0x1f;
     sAossWcmBssDesc = (u8 *)t;
     p->bssDescBuffer = (void *)((t + 0xdf) & ~(uptr)0x1f);
     sAossWcmConfig->bssDescBufferSize = (s32)((u8 *)buf + size - (u8 *)sAossWcmConfig->bssDescBuffer);
@@ -412,7 +413,7 @@ extern "C" s32 Aoss_WcmInit(void *fn, void *buf, u32 size) {
     sAossWcmConfig->dmaNo = 3;
     sAossWcmNotifyCb = (AossWcmNotifyFunc)fn;
     if (sAossWcmState == 0) {
-        if (WifiLink_Init(sAossWcmWork, 0x2300)) {
+        if (WifiLink_Init(sAossWcmWork, WIFI_LINK_WORK_SIZE)) {
             OS_RestoreInterrupts(irq);
             return 0;
         }

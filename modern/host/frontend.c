@@ -136,6 +136,8 @@ extern u8 *Net_GetWifiFriendList(void);
 extern int GameStats_Upload(void), GameStats_PollUpload(void), GameStats_Download(void), GameStats_PollDownload(void);
 extern int AxMail_DownloadMail(void), AxMail_PollMail(void), AxMail_DownloadBbs(void), AxMail_PollBbs(void);
 extern void Net_ClearWifiError(void);
+extern int Net_WifiShutdownStepExt(void), Comm_End(void);
+extern void NetOverlay_Restore(void);
 extern void *PlayerActor_Get(s32 idx);
 extern s32 PlayerActor_RequestPitfallFall(void *o, s32 *unit, s32 b, s32 c);
 static const char *sWfcTest, *sPitfallTest;
@@ -213,9 +215,43 @@ static void net_callers(uintptr_t by[3]) {
 }
 #define NET_CALLERS(by) uintptr_t by[3]; net_callers(by);
 static int sNetLogged;  // (every block given out and taken back, the first 600: who and where, acww-log.txt)
+// the network heap's block lists checked at each of its allocations and frees and each frame (the NNS expanded heap's
+// structs, as laid out on 64-bit hosts): the first broken block reported - something wrote past its own block
+// (the reports go to the log, the game keeps on)
+typedef struct NetHeapBlock { u16 sig, attr; u32 size; struct NetHeapBlock *prev, *next; } NetHeapBlock;
+typedef struct NetHeapHead {
+    u32 sig; void *lp, *ln; void *ch, *ct; u16 cn, co; uintptr_t start, end; u32 attr;
+    NetHeapBlock *freeHead, *freeTail, *usedHead, *usedTail;
+} NetHeapHead;
+static int sHeapBad;
+static void heap_check(const char *where) {
+    if (sHeapBad || !gNetHeap) return;
+    extern void *Heap_HostHandle(void *h);
+    NetHeapHead *h = (NetHeapHead *)Heap_HostHandle(gNetHeap);
+    for (int l = 0; l < 2; l++) {
+        NetHeapBlock *prev = 0;
+        int n = 0;
+        for (NetHeapBlock *b = l ? h->usedHead : h->freeHead; b; prev = b, b = b->next, n++) {
+            const char *bad = 0;
+            if ((uintptr_t)b < h->start || (uintptr_t)b >= h->end) bad = "outside";
+            else if (b->sig != (l ? 0x5544 : 0x4652)) bad = "signature";
+            else if (b->prev != prev) bad = "prev link";
+            else if ((uintptr_t)(b + 1) + b->size > h->end) bad = "size";
+            if (bad || n > 100000) {
+                fprintf(stderr, "net heap: broken (%s list, block %d at %p: %s; sig %#x size %#x prev %p next %p) at %s, frame %llu\n",
+                        l ? "used" : "free", n, (void *)b, bad ? bad : "loop", bad && !strcmp(bad, "outside") ? 0 : b->sig,
+                        bad && !strcmp(bad, "outside") ? 0 : b->size, (void *)prev, bad && !strcmp(bad, "outside") ? 0 : (void *)b->next,
+                        where, (unsigned long long)host_frame());
+                sHeapBad = 1;
+                return;
+            }
+        }
+    }
+}
 static void net_alloc_hook(void *heap, void *p, u32 n, s32 align) {
     (void)align;
     if (heap != gNetHeap || !p) return;
+    heap_check("alloc");
     NET_CALLERS(by)
     if (sNetLogged < 600) {
         sNetLogged++;
@@ -239,6 +275,7 @@ static void net_alloc_hook(void *heap, void *p, u32 n, s32 align) {
 }
 static void net_free_hook(void *heap, void *p) {
     if (heap != gNetHeap || !p) return;
+    heap_check("free");
     if (sNetLogged < 600) {
         NET_CALLERS(by)
         sNetLogged++;
@@ -266,6 +303,14 @@ static void net_heap_trace(void) {
 void host_test_post_task(void) {
     gHostGameFrames++;
     net_heap_trace();
+    heap_check("frame");
+    if (getenv("ACWW_NET_FREE_LOG") && gNetHeap) {
+        extern void Heap_HostFreeSpace(void *h, u32 *all, u32 *largest);
+        static u32 last;
+        u32 all, big;
+        Heap_HostFreeSpace(gNetHeap, &all, &big);
+        if (all != last) fprintf(stderr, "net heap: %u bytes free, %u in one block (frame %llu)\n", all, big, (unsigned long long)host_frame()), last = all;
+    }
     thread_list_check();
     pitfall_test();
     test_ca();
@@ -275,7 +320,11 @@ void host_test_post_task(void) {
     unsigned at;
     if (!*sWfcTest || sscanf(sWfcTest, "%u", &at) != 1 || host_frame() < at || step == 3) return;
     if (step == 0) {
-        fprintf(stderr, "wfc: connecting (frame %llu)\n", (unsigned long long)host_frame());
+        extern void Heap_HostFreeSpace(void *h, u32 *all, u32 *largest);
+        u32 all = 0, big = 0;
+        if (gNetHeap) Heap_HostFreeSpace(gNetHeap, &all, &big);
+        fprintf(stderr, "wfc: connecting (frame %llu; the network heap has %u bytes free, %u in one block)\n",
+                (unsigned long long)host_frame(), all, big);
         NetOverlay_LoadWifi();
         Comm_Start(4, 4, 2);
         step = 1;
@@ -304,7 +353,20 @@ void host_test_post_task(void) {
         static int (*const kPoll[4])(void) = {GameStats_PollDownload, GameStats_PollUpload, AxMail_PollMail, AxMail_PollBbs};
         static const char *const kName[4] = {"stats download", "stats upload", "mail", "bbs"};
         static int k, started;
-        if (k >= 4) { fprintf(stderr, "wfc: all done (frame %llu)\n", (unsigned long long)host_frame()); step = 3; return; }
+        if (k >= 4) {
+            // then off as Copper goes off (shutdownWifi, endComm), and again from the start: ACWW_WFC_TEST=<frame>:<times>
+            NetOverlay_AssertWifi();
+            if (!Net_WifiShutdownStepExt()) return;
+            if (Comm_End()) NetOverlay_Restore();
+            fprintf(stderr, "wfc: all done, off (frame %llu)\n", (unsigned long long)host_frame());
+            unsigned times = 1;
+            const char *c = strchr(sWfcTest, ':');
+            if (c) times = (unsigned)atoi(c + 1);
+            static unsigned done;
+            if (++done < times) step = 0, k = 0, started = 0, lastErr = ~0u;
+            else step = 3;
+            return;
+        }
         if (!started) {
             started = 1;
             int ok = kStart[k]();
