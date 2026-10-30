@@ -227,7 +227,17 @@ static void on_fatal_signal(int sig, siginfo_t *si, void *ctx) {
 #endif
     fprintf(stderr, "host: signal %d (%s) at frame %llu, ", sig, strsignal(sig), (unsigned long long)host_frame());
     print_code_address("pc ", context_pc(ctx));
-    fprintf(stderr, ", address %p\n", si->si_addr);
+    fprintf(stderr, ", address %p", si->si_addr);
+#if HAVE_UC_REGS
+    fprintf(stderr, ", sp %#lx", (unsigned long)UC_SP((ucontext_t *)ctx));
+#if defined(__APPLE__) && defined(__aarch64__)
+    {   // (the argument registers: often the bad pointer)
+        const ucontext_t *uc = ctx;
+        for (int i = 0; i < 4; i++) fprintf(stderr, ", x%d %#llx", i, (unsigned long long)uc->uc_mcontext->__ss.__x[i]);
+    }
+#endif
+#endif
+    fputc('\n', stderr);
     if (sig == SIGFPE)
         fprintf(stderr, "host: (an integer division the DS wouldn't trap on: it wants DS_DIV / DS_MOD, include/ds_div.h)\n");
     context_report(ctx);
