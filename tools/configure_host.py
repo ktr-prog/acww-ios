@@ -66,7 +66,7 @@ parser.add_argument("--os", choices=["linux", "windows", "macos", "ios"], defaul
                          "(docs/ios.md)")
 parser.add_argument("--ios-sdk", default="",
                     help="--os ios: the iPhoneOS SDK (default: `xcrun --sdk iphoneos --show-sdk-path`)")
-parser.add_argument("--ios-min", default="14.0", help="--os ios: the oldest iOS version the app runs on")
+parser.add_argument("--ios-min", default="12.0", help="--os ios: the oldest iOS version the app runs on")
 parser.add_argument("--extra-ldflags", default="", help="more flags for the link (e.g. -fuse-ld=lld)")
 parser.add_argument("--mingw", default="",
                     help="the llvm-mingw directory for --os windows (default: the newest ~/acww/toolchains/llvm-mingw-*)")
@@ -116,7 +116,10 @@ if IOS:
         sys.exit("--os ios: --sdl2 <prefix> with SDL2 built for iOS (lib/libSDL2.a, include/SDL2)")
     if args.cc == "gcc":
         args.cc = "xcrun -sdk iphoneos clang" if sys.platform == "darwin" else "clang"
-    IOS_TARGET = f"-target arm64-apple-ios{args.ios_min} -isysroot {shlex.quote(args.ios_sdk)}"
+    # (an API newer than the oldest iOS the app is for, used without a check, fails the build: it would be missing
+    # there and the app wouldn't start)
+    IOS_TARGET = (f"-target arm64-apple-ios{args.ios_min} -isysroot {shlex.quote(args.ios_sdk)} "
+                  "-Werror=unguarded-availability -Werror=unguarded-availability-new")
     IOS_CXX = args.cc[:-len("clang")] + "clang++" if args.cc.endswith("clang") else args.cc + "++"
     args.cc = f"{args.cc} {IOS_TARGET}"
     args.arch = "aarch64"

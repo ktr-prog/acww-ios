@@ -26,7 +26,7 @@ APP_NAME = "ACWW"         # (the bundle's name: ACWW.app)
 DISPLAY_NAME = "AC:WW"    # (on the home screen and in the Files app)
 EXECUTABLE = "acww"
 BUNDLE_ID = "io.github.acww-native.acww"
-MIN_IOS = "14.0"
+MIN_IOS = "12.0"  # (--min-ios: the build's deployment target)
 
 # the icons: (file name, pixels); iOS picks them by CFBundleIconFiles' base names and the @2x/@3x/~ipad suffixes
 ICONS = [
@@ -37,7 +37,7 @@ ICONS = [
 ]
 
 
-def info_plist(version: str, build: str, commit: str = "") -> dict:
+def info_plist(version: str, build: str, commit: str = "", min_ios: str = MIN_IOS) -> dict:
     orient = ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationLandscapeLeft",
               "UIInterfaceOrientationLandscapeRight"]
     return {
@@ -60,7 +60,7 @@ def info_plist(version: str, build: str, commit: str = "") -> dict:
                                                                               "AppIcon83.5x83.5"]}},
         "DTPlatformName": "iphoneos",
         "LSRequiresIPhoneOS": True,
-        "MinimumOSVersion": MIN_IOS,
+        "MinimumOSVersion": min_ios,
         "UIDeviceFamily": [1, 2],
         "UIRequiredDeviceCapabilities": ["arm64"],
         # (a launch screen: without one iOS runs the app in an old phone's resolution, letterboxed)
@@ -198,6 +198,7 @@ def main():
     p.add_argument("ipa", help="the .ipa to write")
     p.add_argument("--version", default="1.0", help="CFBundleShortVersionString")
     p.add_argument("--build", default="1", help="CFBundleVersion")
+    p.add_argument("--min-ios", default=MIN_IOS, help="MinimumOSVersion (the build's --ios-min)")
     p.add_argument("--commit", default="", help="the source's commit (shown in the app with the build number)")
     p.add_argument("--sign-adhoc", action="store_true", help="an ad-hoc signature (codesign, macOS only)")
     p.add_argument("--icon", default="ios/icon.png",
@@ -222,7 +223,7 @@ def main():
     shutil.copyfile(binary, app / EXECUTABLE)
     os.chmod(app / EXECUTABLE, 0o755)
     with open(app / "Info.plist", "wb") as f:
-        plistlib.dump(info_plist(args.version, args.build, args.commit), f, fmt=plistlib.FMT_XML)
+        plistlib.dump(info_plist(args.version, args.build, args.commit, args.min_ios), f, fmt=plistlib.FMT_XML)
     (app / "PkgInfo").write_bytes(b"APPL????")
     # (tools/ios_check.py found the save states' ranges wrong: the app turns them off)
     off = binary.parent / "savestates-off"

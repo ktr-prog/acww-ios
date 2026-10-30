@@ -1,6 +1,6 @@
 # iPhone and iPad
 
-The same native program as on the PC (no emulator), built for iPhones and iPads with iOS 14 or later (so iOS 18
+The same native program as on the PC (no emulator), built for iPhones and iPads with iOS 12 or later (so iOS 18
 too). The on-screen layout is checked for every size from the iPhone SE to the iPad Pro. You need your own dump of
 the game:
 **Animal Crossing: Wild World, USA (Rev 1)**, SHA-1 `77fde3e30e1e6068395d1f96ea63be569b61c351`.
@@ -106,7 +106,7 @@ What the workflow does (Xcode, CMake and Ninja: `brew install cmake ninja`):
 ```
 git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git build/SDL2-src
 cmake -S build/SDL2-src -B build/SDL2-build -G Ninja -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF \
   -DCMAKE_INSTALL_PREFIX="$PWD/build/SDL2-ios"
 cmake --build build/SDL2-build && cmake --install build/SDL2-build
 python3 tools/configure_host.py --os ios --sdl2 "$PWD/build/SDL2-ios"

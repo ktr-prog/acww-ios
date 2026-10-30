@@ -570,7 +570,7 @@ void g3_render(void) {
         timing = getenv("ACWW_GPU3D_TIMING") != 0;
         (void)timing_report;
     }
-    if (timing) timespec_get(&t0, TIME_UTC);
+    if (timing) clock_gettime(CLOCK_MONOTONIC, &t0);
     sR = &gG3Render;
     g3_tex_setup();
     if (sWgpu)  // (the GPU's rasteriser: gpu3d_wgpu.c)
@@ -585,7 +585,7 @@ void g3_render(void) {
     sShown ^= 1;
     if (!sWgpu || sWgpuReadback) memcpy(sFrameBuf[sShown], sColor, sizeof sColor);
     if (timing) {
-        timespec_get(&t1, TIME_UTC);
+        clock_gettime(CLOCK_MONOTONIC, &t1);
         double ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
         sRenderNs += ns;
         if (ns > sRenderMax) sRenderMax = ns;
