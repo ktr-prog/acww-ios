@@ -217,7 +217,11 @@ def check_state(map_path, objects_path):
     bad, counts = [], {}
     for a, size, idx, name in syms:
         sec = section_of(a)
-        if not sec or sec[0] != "__DATA" or sec[1] in ("__la_symbol_ptr", "__got", "__thread_ptrs") or \
+        # (not the game's state: the loader's tables, and the data that only the loader writes - constants with pointers,
+        # initialiser lists, which an iOS 12 build has in __DATA rather than __DATA_CONST)
+        if not sec or sec[0] != "__DATA" or sec[1] in ("__la_symbol_ptr", "__got", "__thread_ptrs", "__const",
+                                                       "__mod_init_func", "__mod_term_func", "__init_offsets",
+                                                       "__cfstring") or \
                 sec[1].startswith("__objc_"):
             continue
         mine = files.get(idx) in state_objs
