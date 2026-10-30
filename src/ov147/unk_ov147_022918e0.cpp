@@ -659,6 +659,15 @@ void TitleTalk::openChoiceSet(TitleChoiceSet *d) {
     u8 *r5 = d->msgIds;
     u8 *r6 = d->nextMsgIds;
     u32 r7 = d->numChoices;
+#ifdef HOST64
+    // (no "Nintendo WFC settings" (choice 0xe): the game connects through the device's own network, set up
+    // already - the settings program would need the system to start again)
+    u8 keepIds[5], keepNext[5];
+    u32 kept = 0;
+    for (u32 i = 0; i < r7; i++)
+        if (r5[i] != 0x0e) keepIds[kept] = r5[i], keepNext[kept] = r6[i], kept++;
+    r5 = keepIds, r6 = keepNext, r7 = kept;
+#endif
     sp10->reset(r7, r7 - 1);
     s32 r4;
     s32 z0 = 0;

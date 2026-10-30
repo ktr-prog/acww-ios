@@ -31,6 +31,7 @@ int nat_take(u8 *buf, u32 cap, u32 *len) { (void)buf, (void)cap, (void)len; retu
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -177,7 +178,46 @@ static void dhcp_in(const u8 *d, u32 n) {
 }
 
 // ---- UDP: a host socket per DS port
-static struct Udp { int fd; u16 dsPort; u64 used; } sUdp[MAX_UDP];
+static struct Udp { int fd, family; u16 dsPort; u64 used; } sUdp[MAX_UDP];
+
+// The host's address for an IPv4 one of the DS's. On a network with only IPv6 (some mobile networks: NAT64), the
+// system makes an IPv6 address for it (getaddrinfo on the address, as Apple asks of apps); on others it stays IPv4.
+static socklen_t peer_addr(u32 ip, u16 port, struct sockaddr_storage *out) {
+    char host[16], serv[8];
+    snprintf(host, sizeof host, "%u.%u.%u.%u", ip >> 24, ip >> 16 & 255, ip >> 8 & 255, ip & 255);
+    snprintf(serv, sizeof serv, "%u", port);
+    struct addrinfo hints = {0}, *res = 0;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+#ifdef AI_DEFAULT
+    hints.ai_flags = AI_DEFAULT;
+#endif
+    socklen_t n = 0;
+    if (getaddrinfo(host, serv, &hints, &res) == 0 && res && res->ai_addrlen <= sizeof *out) {
+        memcpy(out, res->ai_addr, res->ai_addrlen);
+        n = (socklen_t)res->ai_addrlen;
+    }
+    if (res) freeaddrinfo(res);
+    if (!n) {  // (as it was)
+        struct sockaddr_in *a = (struct sockaddr_in *)out;
+        memset(out, 0, sizeof *out);
+        a->sin_family = AF_INET, a->sin_addr.s_addr = htonl(ip), a->sin_port = htons(port);
+        n = sizeof *a;
+    }
+    return n;
+}
+// ... and back: the IPv4 address an answer came from (NAT64's addresses end in it; so do IPv4-mapped ones)
+static u32 peer_ip(const struct sockaddr_storage *a, u16 *port) {
+    if (a->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *b = (const struct sockaddr_in6 *)a;
+        *port = ntohs(b->sin6_port);
+        const u8 *x = b->sin6_addr.s6_addr + 12;
+        return (u32)x[0] << 24 | (u32)x[1] << 16 | (u32)x[2] << 8 | x[3];
+    }
+    const struct sockaddr_in *b = (const struct sockaddr_in *)a;
+    *port = ntohs(b->sin_port);
+    return ntohl(b->sin_addr.s_addr);
+}
 
 static void set_nonblock(int fd) {
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
@@ -192,6 +232,9 @@ static void udp_out(u16 sport, u32 dst, u16 dport, const u8 *data, u32 n) {
     struct Udp *u = 0;
     for (int i = 0; i < MAX_UDP && !u; i++)
         if (sUdp[i].fd > 0 && sUdp[i].dsPort == sport) u = &sUdp[i];
+    struct sockaddr_storage a;
+    socklen_t al = peer_addr(dst, dport, &a);
+    if (u && u->family != a.ss_family) close(u->fd), u->fd = 0, u = 0;  // (the network changed between IPv4 and IPv6)
     if (!u) {
         for (int i = 0; i < MAX_UDP && !u; i++)
             if (sUdp[i].fd <= 0) u = &sUdp[i];
@@ -201,17 +244,13 @@ static void udp_out(u16 sport, u32 dst, u16 dport, const u8 *data, u32 n) {
                 if (sUdp[i].used < u->used) u = &sUdp[i];
             close(u->fd);
         }
-        u->fd = socket(AF_INET, SOCK_DGRAM, 0);
+        u->fd = socket(a.ss_family, SOCK_DGRAM, 0);
         if (u->fd < 0) { u->fd = 0; return; }
         set_nonblock(u->fd);
-        u->dsPort = sport;
+        u->dsPort = sport, u->family = a.ss_family;
     }
     u->used = now_ms();
-    struct sockaddr_in a = {0};
-    a.sin_family = AF_INET;
-    a.sin_addr.s_addr = htonl(dst);
-    a.sin_port = htons(dport);
-    if (sendto(u->fd, data, n, 0, (struct sockaddr *)&a, sizeof a) < 0) LOG("UDP to %08x:%u: %s\n", dst, dport, strerror(errno));
+    if (sendto(u->fd, data, n, 0, (struct sockaddr *)&a, al) < 0) LOG("UDP to %08x:%u: %s\n", dst, dport, strerror(errno));
 }
 
 static void udp_poll(void) {
@@ -220,14 +259,15 @@ static void udp_poll(void) {
         if (u->fd <= 0) continue;
         for (int k = 0; k < 16 && queue_room() > 8; k++) {
             u8 buf[1472];
-            struct sockaddr_in from;
+            struct sockaddr_storage from;
             socklen_t fl = sizeof from;
             ssize_t r = recvfrom(u->fd, buf, sizeof buf, 0, (struct sockaddr *)&from, &fl);
             if (r < 0) break;
             u->used = now_ms();
-            u32 src = ntohl(from.sin_addr.s_addr);
-            if (src == sDnsIp && ntohs(from.sin_port) == 53) src = DNS_IP_DEFAULT;  // (and the answers from it)
-            send_udp(src, ntohs(from.sin_port), DS_IP, u->dsPort, buf, (u32)r);
+            u16 fport;
+            u32 src = peer_ip(&from, &fport);
+            if (src == sDnsIp && fport == 53) src = DNS_IP_DEFAULT;  // (and the answers from it)
+            send_udp(src, fport, DS_IP, u->dsPort, buf, (u32)r);
         }
         if (now_ms() - u->used > 180000) { close(u->fd); u->fd = 0; }
     }
@@ -344,7 +384,9 @@ static void tcp_in(u32 src, u32 dst, const u8 *s, u32 n) {
         if (!t) { tcp_rst_reply(src, sport, dst, dport, 0, seq + 1, 1); return; }
         memset(t, 0, sizeof *t);
         t->out = malloc(TCP_BUF), t->in = malloc(TCP_BUF);
-        t->fd = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_storage a;
+        socklen_t al = peer_addr(dst, dport, &a);
+        t->fd = socket(a.ss_family, SOCK_STREAM, 0);
         if (!t->out || !t->in || t->fd < 0) { tcp_free(t); tcp_rst_reply(src, sport, dst, dport, 0, seq + 1, 1); return; }
         set_nonblock(t->fd);
         t->dsPort = sport, t->rIp = dst, t->rPort = dport;
@@ -363,11 +405,7 @@ static void tcp_in(u32 src, u32 dst, const u8 *s, u32 n) {
         if (t->mss > MSS_MAX) t->mss = MSS_MAX;
         t->dsWnd = wnd;
         t->rto = 600;
-        struct sockaddr_in a = {0};
-        a.sin_family = AF_INET;
-        a.sin_addr.s_addr = htonl(dst);
-        a.sin_port = htons(dport);
-        int r = connect(t->fd, (struct sockaddr *)&a, sizeof a);
+        int r = connect(t->fd, (struct sockaddr *)&a, al);
         if (r < 0 && errno != EINPROGRESS) {
             LOG("TCP to %08x:%u: %s\n", dst, dport, strerror(errno));
             tcp_rst_reply(src, sport, dst, dport, 0, seq + 1, 1);

@@ -150,8 +150,22 @@ static void pitfall_test(void) {
     s32 unit[2] = {pos[0] / 8192, pos[2] / 8192};
     fprintf(stderr, "pitfall: at %d,%d: %d\n", unit[0], unit[1], PlayerActor_RequestPitfallFall(o, unit, 6, -1));
 }
+// ACWW_TEST_CA=<the modulus, 256 hex digits>: the "Nintendo CA" root the SSL client trusts gets that key (a test
+// server's chain, for the connection tests: tools/wfc_test_server.py)
+extern u8 data_ov065_0228c0b8[128];
+static const char *sTestCa;
+HOST_STATE_KEEP(sTestCa)
+static void test_ca(void) {
+    if (!sTestCa) sTestCa = getenv("ACWW_TEST_CA") ? getenv("ACWW_TEST_CA") : "";
+    if (strlen(sTestCa) < 256) return;
+    for (int i = 0; i < 128; i++) {
+        unsigned v;
+        if (sscanf(sTestCa + i * 2, "%2x", &v) == 1) data_ov065_0228c0b8[i] = (u8)v;
+    }
+}
 void host_test_post_task(void) {
     pitfall_test();
+    test_ca();
     if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";
     static int step;
     static u32 lastErr = ~0u;
