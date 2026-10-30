@@ -209,10 +209,16 @@ static void net_callers(uintptr_t by[3]) {
     }
 }
 #define NET_CALLERS(by) uintptr_t by[3]; net_callers(by);
+static int sNetLogged;  // (every block given out and taken back, the first 600: who and where, acww-log.txt)
 static void net_alloc_hook(void *heap, void *p, u32 n, s32 align) {
     (void)align;
     if (heap != gNetHeap || !p) return;
     NET_CALLERS(by)
+    if (sNetLogged < 600) {
+        sNetLogged++;
+        fprintf(stderr, "net heap: + %p %u (frame %llu)", p, n, (unsigned long long)host_frame());
+        net_who(by);
+    }
     uintptr_t a = (uintptr_t)p;
     for (int i = 0; i < sNetBlockCount && sNetReports < 20; i++)
         if (a < sNetBlocks[i].p + sNetBlocks[i].n && sNetBlocks[i].p < a + n) {
@@ -230,6 +236,12 @@ static void net_alloc_hook(void *heap, void *p, u32 n, s32 align) {
 }
 static void net_free_hook(void *heap, void *p) {
     if (heap != gNetHeap || !p) return;
+    if (sNetLogged < 600) {
+        NET_CALLERS(by)
+        sNetLogged++;
+        fprintf(stderr, "net heap: - %p (frame %llu)", p, (unsigned long long)host_frame());
+        net_who(by);
+    }
     for (int i = 0; i < sNetBlockCount; i++)
         if (sNetBlocks[i].p == (uintptr_t)p) { sNetBlocks[i] = sNetBlocks[--sNetBlockCount]; return; }
     if (sNetReports < 20) {

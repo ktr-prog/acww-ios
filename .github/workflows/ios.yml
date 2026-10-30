@@ -90,6 +90,16 @@ jobs:
           file build/hostios_usa/acww
           python3 tools/ios_check.py build/hostios_usa/acww
 
+      - name: Code for crash reports
+        # (the instructions of functions named in crash reports from devices, as an annotation: acww-log.txt names a
+        # function and an offset; the log isn't readable here otherwise)
+        run: |
+          for f in Task_RunAllPhases; do
+            out=$(xcrun objdump --no-show-raw-insn --disassemble-symbols=_$f build/hostios_usa/acww | tail -n +5 | head -150 \
+                  | sed 's/%/%25/g' | tr '\n' '~' | sed 's/~/%0A/g') || true
+            echo "::notice title=$f::$out"
+          done
+
       - name: Package
         run: |
           python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa \
