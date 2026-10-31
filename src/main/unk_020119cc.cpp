@@ -313,6 +313,10 @@ struct NpcEmotionEntry {
     /* 0x19 */ u8 seMode;
     /* 0x1a */ u8 pad_1a[2];
 };
+#include "player/Unk_0200b908_Obj.h"
+// (the player's view of an entry, PlayerActor::setupEmotion: the same fields)
+static_assert(__builtin_offsetof(Unk_0200b908_Obj, nextAnimId) == __builtin_offsetof(NpcEmotionEntry, phases[1].animId), "emotion view");
+static_assert(__builtin_offsetof(Unk_0200b908_Obj, animPlayMode) == __builtin_offsetof(NpcEmotionEntry, introMode), "emotion view");
 typedef void (NpcTalkCtrl::*Unk_02014040_Fn)(NpcActor *);
 
 

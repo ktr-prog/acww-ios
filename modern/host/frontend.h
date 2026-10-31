@@ -39,5 +39,6 @@ typedef struct {
 AcwwShm *frontend_backend_open(const char *argv0);  // the block, or 0: no window (the run goes on headless)
 void frontend_backend_frame(AcwwShm *shm);           // after each published frame: show it, take the input
 void frontend_backend_close(void);                   // at exit (also from the crash and SIGINT handlers)
+void frontend_backend_turn(void);                    // at the end of each turn of the game's main loop (the taps)
 
 #endif

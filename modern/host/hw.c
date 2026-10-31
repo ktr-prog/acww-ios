@@ -96,7 +96,21 @@ static u64 tm_next_overflow(Timer *t) {
 // ---- real time: one frame per 1/60 s unless ACWW_FAST is set
 static int sFast = -1;
 static u64 sNextFrame;  // host_plat_time_ns
+static int sPaused;  // (defined below: host_set_paused)
 static void host_pace_frame(void) {
+    {   // (a frame that took long in real time - over 100 ms, ACWW_SLOW_FRAME_MS - is logged, the first 100: where the
+        // game stalls)
+        static u64 last, limit;
+        static int reports, maxReports;
+        if (!maxReports) maxReports = getenv("ACWW_SLOW_FRAME_MAX") ? atoi(getenv("ACWW_SLOW_FRAME_MAX")) : 100;
+        if (!limit) limit = (getenv("ACWW_SLOW_FRAME_MS") ? (u64)atoi(getenv("ACWW_SLOW_FRAME_MS")) : 100) * 1000000u;
+        u64 t = host_plat_time_ns();
+        if (last && t - last > limit && reports < maxReports && !__atomic_load_n(&sPaused, __ATOMIC_RELAXED)) {
+            reports++;
+            fprintf(stderr, "host: frame %llu took %llu ms\n", (unsigned long long)host_frame(), (unsigned long long)((t - last) / 1000000));
+        }
+        last = t;
+    }
     // ACWW_FAST=1: never paced; ACWW_FAST=<frame> (> 1): not paced until that frame (a test gets somewhere quickly,
     // then runs in real time - the wireless tests: two copies keep each other's pace)
     if (sFast < 0) sFast = getenv("ACWW_FAST") ? (atoi(getenv("ACWW_FAST")) > 1 ? atoi(getenv("ACWW_FAST")) : 1) : 0;

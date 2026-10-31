@@ -22,22 +22,25 @@ extern void *gCommManager;
 
 extern FishSpawnRow **sFishTablesByPeriod[14];
 
+// (the period's entry of sFishTablesByPeriod: by element - the entries are pointers, wider than a u32 on 64-bit
+// hosts)
+#define FISH_PERIOD(i) ((u32 *)&sFishTablesByPeriod[i])
 extern "C" u32 *FishTable_GetForDate(u32 id, s32 k) {
     if (id >= 1 && id <= 7) {
-        return (u32 *)sFishTablesByPeriod + (id - 1);
+        return FISH_PERIOD(id - 1);
     }
     if (id == 8) {
-        if (k == 0) return (u32 *)sFishTablesByPeriod + (id - 1);
-        if (k == 1) return (u32 *)sFishTablesByPeriod + id;
+        if (k == 0) return FISH_PERIOD(id - 1);
+        if (k == 1) return FISH_PERIOD(id);
         return 0;
     }
     if (id == 9) {
-        if (k == 0) return (u32 *)sFishTablesByPeriod + id;
-        if (k == 1) return (u32 *)sFishTablesByPeriod + (id + 1);
+        if (k == 0) return FISH_PERIOD(id);
+        if (k == 1) return FISH_PERIOD(id + 1);
         return 0;
     }
     if (id >= 10 && id <= 12) {
-        return (u32 *)sFishTablesByPeriod + (id + 1);
+        return FISH_PERIOD(id + 1);
     }
     return 0;
 }

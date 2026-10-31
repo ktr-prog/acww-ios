@@ -221,7 +221,14 @@ int tc_pointer(TcState *s, const TcLayout *l, int64_t id, int event, float x, fl
         TcRect sc = l->screens;
         if (inside(sc, x, y)) {
             int bottom = y >= sc.y + sc.h / 2;
-            s->p[i].what = bottom && !stylus_taken(s, i) ? WHAT_STYLUS : WHAT_NOTHING;
+            if (bottom) {  // the stylus now (the finger that had it, if any, holds nothing from here on)
+                for (int j = 0; j < TC_MAX_POINTERS; j++)
+                    if (j != i && s->p[j].used && s->p[j].what == WHAT_STYLUS) s->p[j].what = WHAT_NOTHING;
+                s->p[i].what = WHAT_STYLUS;
+                s->stylus_presses++;
+            } else {
+                s->p[i].what = WHAT_NOTHING;
+            }
         } else if (l->controls && dpad_at(l, x, y)) {
             s->p[i].what = TC_DPAD;
         } else if (l->controls) {
@@ -255,6 +262,8 @@ uint32_t tc_keys(const TcState *s) {
         if (s->p[i].used) k |= s->p[i].keys;
     return k;
 }
+
+unsigned tc_stylus_presses(const TcState *s) { return s->stylus_presses; }
 
 int tc_stylus(const TcState *s, int *x, int *y) {
     if (!stylus_taken(s, -1)) return 0;

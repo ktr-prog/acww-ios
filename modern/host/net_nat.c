@@ -182,10 +182,18 @@ static struct Udp { int fd, family; u16 dsPort; u64 used; } sUdp[MAX_UDP];
 
 // The host's address for an IPv4 one of the DS's. On a network with only IPv6 (some mobile networks: NAT64), the
 // system makes an IPv6 address for it (getaddrinfo on the address, as Apple asks of apps); on others it stays IPv4.
-static socklen_t peer_addr(u32 ip, u16 port, struct sockaddr_storage *out) {
-    char host[16], serv[8];
+// getaddrinfo can wait on the network (the first time on a network the system asks its DNS server how to make such
+// addresses), and this runs on the game's thread: the game stood still for about a second as it connected. So the
+// answers are kept for each address (the DS sends a lot of packets to few), and the access point coming up asks
+// once, on a thread of its own, about the DNS server's address: the system has its answer ready when the DS starts.
+#include <pthread.h>
+enum { PEER_CACHE = 64 };
+static struct Peer { u32 ip; socklen_t len; struct sockaddr_storage a; } sPeer[PEER_CACHE];
+static int sPeerCount, sPeerNext;
+static pthread_mutex_t sPeerLock = PTHREAD_MUTEX_INITIALIZER;
+static socklen_t peer_resolve(u32 ip, struct sockaddr_storage *out) {
+    char host[16];
     snprintf(host, sizeof host, "%u.%u.%u.%u", ip >> 24, ip >> 16 & 255, ip >> 8 & 255, ip & 255);
-    snprintf(serv, sizeof serv, "%u", port);
     struct addrinfo hints = {0}, *res = 0;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_DGRAM;
@@ -193,11 +201,42 @@ static socklen_t peer_addr(u32 ip, u16 port, struct sockaddr_storage *out) {
     hints.ai_flags = AI_DEFAULT;
 #endif
     socklen_t n = 0;
-    if (getaddrinfo(host, serv, &hints, &res) == 0 && res && res->ai_addrlen <= sizeof *out) {
+    if (getaddrinfo(host, "1", &hints, &res) == 0 && res && res->ai_addrlen <= sizeof *out) {
         memcpy(out, res->ai_addr, res->ai_addrlen);
         n = (socklen_t)res->ai_addrlen;
     }
     if (res) freeaddrinfo(res);
+    return n;
+}
+static void peer_store(u32 ip, const struct sockaddr_storage *a, socklen_t n) {
+    pthread_mutex_lock(&sPeerLock);
+    int i = 0;
+    while (i < sPeerCount && sPeer[i].ip != ip) i++;
+    if (i == sPeerCount) {
+        if (sPeerCount < PEER_CACHE) sPeerCount++;
+        else i = sPeerNext, sPeerNext = (sPeerNext + 1) % PEER_CACHE;
+    }
+    sPeer[i].ip = ip, sPeer[i].len = n, sPeer[i].a = *a;
+    pthread_mutex_unlock(&sPeerLock);
+}
+static void peer_warm(void *arg) {  // (the thread: the DNS server's address, asked once)
+    u32 ip = (u32)(uintptr_t)arg;
+    struct sockaddr_storage a;
+    socklen_t n = peer_resolve(ip, &a);
+    if (n) peer_store(ip, &a, n);
+}
+static socklen_t peer_addr(u32 ip, u16 port, struct sockaddr_storage *out) {
+    socklen_t n = 0;
+    pthread_mutex_lock(&sPeerLock);
+    for (int i = 0; i < sPeerCount; i++)
+        if (sPeer[i].ip == ip) { *out = sPeer[i].a, n = sPeer[i].len; break; }
+    pthread_mutex_unlock(&sPeerLock);
+    if (!n) {
+        n = peer_resolve(ip, out);
+        if (n) peer_store(ip, out, n);
+    }
+    if (n && out->ss_family == AF_INET6) ((struct sockaddr_in6 *)out)->sin6_port = htons(port);
+    else if (n) ((struct sockaddr_in *)out)->sin_port = htons(port);
     if (!n) {  // (as it was)
         struct sockaddr_in *a = (struct sockaddr_in *)out;
         memset(out, 0, sizeof *out);
@@ -610,6 +649,10 @@ void nat_start(const u8 dsMac[6]) {
     struct in_addr a;
     sDnsIp = d && inet_pton(AF_INET, d, &a) == 1 ? ntohl(a.s_addr) : DNS_IP_DEFAULT;
     sOn = 1;
+    pthread_mutex_lock(&sPeerLock);
+    sPeerCount = sPeerNext = 0;  // (the network may have changed since the last time)
+    pthread_mutex_unlock(&sPeerLock);
+    if (!host_plat_thread_start(peer_warm, (void *)(uintptr_t)sDnsIp)) LOG("no thread for the address lookup\n");
     LOG("the access point is up (Wiimmfi's DNS %d.%d.%d.%d)\n", sDnsIp >> 24, sDnsIp >> 16 & 255, sDnsIp >> 8 & 255,
         sDnsIp & 255);
 }

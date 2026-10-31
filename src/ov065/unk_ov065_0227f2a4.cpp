@@ -992,7 +992,11 @@ s32 gpiSetInfoCache(GPConnection *h, GPIProfile *p, GPIInfoCache *q) {
     p->cache = (GPIInfoCache *)GsUtil_Alloc(sizeof(GPIInfoCache));
     d = p->cache;
     if (d != 0) {
+#ifdef HOST64
+        *d = *q;  // (all of it: 0x110 bytes here, the copy block is the DS's 0xf0)
+#else
         *(GPIInfoCacheCopy *)d = *(GPIInfoCacheCopy *)q;
+#endif
         p->cache->nick = goastrdup(q->nick);
         p->cache->uniquenick = goastrdup(q->uniquenick);
         p->cache->email = goastrdup(q->email);

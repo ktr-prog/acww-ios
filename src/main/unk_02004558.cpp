@@ -7674,3 +7674,16 @@ char sPlayerHairPalName[] = "hair_pl";
 char sPlayerShirtTexName[] = "w";
 }
 }
+
+#ifdef HOST64
+// (modern/host/frontend.c's ACWW_EMOTION_TEST: the local player's action, body animation and emotion effects)
+extern "C" int PlayerActor_HostEmotionState(void *obj, s32 *action, u32 *anim, u32 *mode, s32 *effects) {
+    PlayerActor *o = (PlayerActor *)obj;
+    if (o == NULL) return 0;
+    *action = o->action;
+    *anim = AnimSlotRef_GetAnimId(&o->bodyAnimSlot);
+    *mode = o->bodyModel.playMode;
+    for (int i = 0; i < 4; i++) effects[i] = o->emotionFx.effects[i];
+    return 1;
+}
+#endif

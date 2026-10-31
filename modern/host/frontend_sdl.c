@@ -412,20 +412,27 @@ static void finger_to_logical(float fx, float fy, int *x, int *y) {
     *y = (int)ly;
 }
 // Taps for the game. The game looks at the touch screen once a turn of its main loop - every third screen refresh
-// in town (20 a second) - so a quick tap, or the release between two quick taps, could fall between two looks and
-// be lost. Each press is noted as it happens (touch_sample, after every touch event too, so even a tap that starts
-// and ends between two frames counts), queued, and shown to the game for at least two of its turns; the release
-// before the next queued tap as well. A held finger is followed as it moves, at once.
+// in town and on its keyboards (20 a second) - so a quick tap, or the release between two quick taps, could fall
+// between two looks and be lost. Each press is noted as it happens (touch_sample, after every touch event too, so
+// even a tap that starts and ends between two frames counts) and queued. A press is shown at once when the game
+// has seen the screen released since the last one; it is taken back only at the end of a turn's work
+// (frontend_backend_turn, from Main_PostTaskStub), after the turn that read it: one turn down and one turn up per
+// queued tap, the most the game can take (as on a DS), each at its next look. The first press shown at a screen
+// refresh stays two turn ends (a refresh can come in the middle of a slow turn, after its read). A held finger is
+// followed as it moves, at once.
 static struct { int x, y; } sTapQ[32];
 static int sTapHead, sTapCount;
 static int sRawDown, sRawX, sRawY;
+static unsigned sRawPresses;  // (the touch controls' count of presses: a finger landing while another is down)
 static unsigned sPressId, sCurId;  // (the finger's press; the one shown)
 static int sCurDown, sCurX, sCurY;
-static unsigned long long sCurAt, sUpAt;  // (gHostGameFrames when the shown press began / ended)
-static int raw_touch(int *x, int *y) {
+static unsigned long long sCurUntil, sUpAt;  // (gHostGameFrames: the shown press may go once past this; the last release)
+static int raw_touch(int *x, int *y, unsigned *presses) {
 #if HOST_IOS
+    *presses = tc_stylus_presses(&sTouch);
     return tc_stylus(&sTouch, x, y);
 #else
+    *presses = sRawPresses;
     int held = sFinger.held || sMouse.held;
     *x = sFinger.held ? sFinger.x : sMouse.x, *y = (sFinger.held ? sFinger.y : sMouse.y) - 192;
     if (held && *y < 0 && sRawDown) *x = sRawX, *y = sRawY;  // (dragged off the top: held at the last point)
@@ -434,8 +441,9 @@ static int raw_touch(int *x, int *y) {
 #endif
 }
 static void touch_sample(void) {
-    int x, y, down = raw_touch(&x, &y);
-    if (down && !sRawDown) {  // a new press
+    unsigned presses;
+    int x, y, down = raw_touch(&x, &y, &presses);
+    if (down && (!sRawDown || presses != sRawPresses)) {  // a new press (also a second finger taking over)
         sPressId++;
         if (sTapCount < 32) {
             sTapQ[(sTapHead + sTapCount) % 32].x = x, sTapQ[(sTapHead + sTapCount) % 32].y = y;
@@ -444,20 +452,34 @@ static void touch_sample(void) {
     }
     if (down) sRawX = x, sRawY = y;
     sRawDown = down;
+    sRawPresses = presses;
+}
+// the next queued press shown, if the game has seen the release before it (a turn ended since); atTurnEnd: called
+// at the end of a turn (else at a screen refresh)
+static void touch_show_next(int atTurnEnd) {
+    unsigned long long now = gHostGameFrames;
+    if (sCurDown || !sTapCount || now <= sUpAt) return;
+    sCurX = sTapQ[sTapHead].x, sCurY = sTapQ[sTapHead].y;
+    sTapHead = (sTapHead + 1) % 32, sTapCount--;
+    sCurId = sPressId - (unsigned)sTapCount;  // (the press it came from)
+    sCurDown = 1, sCurUntil = atTurnEnd ? now : now + 1;
+}
+static int touch_live(void) {  // (the finger of the shown press still down, nothing after it)
+    return sCurDown && sCurId == sPressId && sRawDown && !sTapCount;
 }
 static void touch_publish(void) {
+    touch_show_next(0);
+    if (touch_live()) sCurX = sRawX, sCurY = sRawY;
+    if (sCurDown) sShm->touch_x = sCurX, sShm->touch_y = sCurY;
+    sShm->touch_down = sCurDown;
+}
+// the end of a turn's work (Main_PostTaskStub, after gHostGameFrames moved): a press the game has read lets go
+// unless its finger is still down; the next one is shown
+void frontend_backend_turn(void) {
+    if (!sShm) return;
     unsigned long long now = gHostGameFrames;
-    if (sCurDown) {
-        int live = sCurId == sPressId && sRawDown && !sTapCount;  // (the finger of this press still down)
-        if (live) sCurX = sRawX, sCurY = sRawY;
-        else if (now - sCurAt >= 2) sCurDown = 0, sUpAt = now;
-    }
-    if (!sCurDown && sTapCount && now - sUpAt >= 2) {
-        sCurX = sTapQ[sTapHead].x, sCurY = sTapQ[sTapHead].y;
-        sTapHead = (sTapHead + 1) % 32, sTapCount--;
-        sCurId = sPressId - (unsigned)sTapCount;  // (the press it came from)
-        sCurDown = 1, sCurAt = now;
-    }
+    if (sCurDown && !touch_live() && now > sCurUntil) sCurDown = 0, sUpAt = now;
+    touch_show_next(1);
     if (sCurDown) sShm->touch_x = sCurX, sShm->touch_y = sCurY;
     sShm->touch_down = sCurDown;
 }

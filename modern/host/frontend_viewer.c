@@ -52,4 +52,5 @@ void frontend_backend_close(void) {
     if (sName[0]) shm_unlink(sName);
 }
 
+void frontend_backend_turn(void) {}
 #endif

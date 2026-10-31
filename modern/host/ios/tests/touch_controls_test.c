@@ -229,12 +229,16 @@ static void check_touch(void) {
     CHECK(tc_stylus(&s, &x, &y) && x == 128 && y == 96, "stylus middle: %d,%d", x, y);
     tc_pointer(&s, &l, 3, TC_MOVE, sc.x - 50, sc.y);  // dragged off: held at the nearest edge
     CHECK(tc_stylus(&s, &x, &y) && x == 0 && y == 0, "stylus dragged off: %d,%d", x, y);
-    tc_pointer(&s, &l, 4, TC_DOWN, sc.x + sc.w / 4, sc.y + sc.h * 0.9f);  // a second finger: not the stylus
+    unsigned presses = tc_stylus_presses(&s);
+    tc_pointer(&s, &l, 4, TC_DOWN, sc.x + sc.w / 4, sc.y + sc.h * 0.9f);  // a second finger: the stylus now
+    CHECK(tc_stylus(&s, &x, &y) && x == 64 && y == 153 && tc_stylus_presses(&s) == presses + 1,
+          "the second finger takes the stylus (a new press): %d,%d", x, y);
     tc_pointer(&s, &l, 3, TC_MOVE, sc.x + sc.w / 2, sc.y + sc.h * 0.75f);
-    CHECK(tc_stylus(&s, &x, &y) && x == 128 && y == 96, "the first finger stays the stylus: %d,%d", x, y);
+    CHECK(tc_stylus(&s, &x, &y) && x == 64 && y == 153, "the first finger moving changes nothing: %d,%d", x, y);
     tc_pointer(&s, &l, 3, TC_UP, 0, 0);
-    CHECK(!tc_stylus(&s, &x, &y), "stylus lifted (the second finger isn't it)");
+    CHECK(tc_stylus(&s, &x, &y) && x == 64 && y == 153, "the first finger lifted: the second still holds it");
     tc_pointer(&s, &l, 4, TC_UP, 0, 0);
+    CHECK(!tc_stylus(&s, &x, &y) && tc_stylus_presses(&s) == presses + 1, "both lifted");
     tc_pointer(&s, &l, 5, TC_DOWN, sc.x + sc.w / 2, sc.y + sc.h / 4);  // the top screen
     CHECK(!tc_stylus(&s, &x, &y) && tc_keys(&s) == 0, "the top screen does nothing");
     tc_pointer(&s, &l, 5, TC_UP, 0, 0);

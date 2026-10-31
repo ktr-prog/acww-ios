@@ -392,7 +392,7 @@ BOOL HandOverItem::begin(u16 *id, s32 a, u8 b, s32 c, Character *o0, Character *
 BOOL HandOverItem::isCharAt(void *p, u32 idx)
 {
     if (idx < 2 && chars[idx] != NULL) {
-        if (((Character *)(p))->getCharId() == ((Character *)(*(Character **)((u8 *)this + idx * 4 + 0xcc)))->getCharId()) {
+        if (((Character *)(p))->getCharId() == chars[idx]->getCharId()) {
             return TRUE;
         }
     }

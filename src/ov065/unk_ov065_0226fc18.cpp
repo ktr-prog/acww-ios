@@ -1218,7 +1218,7 @@ void DwcConn_OnGt2SocketError(void *socket) {
     gt2GetRemoteIP(socket);
     data_ov065_02290674 = GOAGetLastError();
     DwcCore_SetError(8, -0x17aeb);
-    *(u32 *)sDwcControl = 0;
+    sDwcControl->transportSocket = 0;  // (the first word on the DS: the whole pointer here)
 }
 }
 }

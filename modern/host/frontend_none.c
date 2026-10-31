@@ -17,4 +17,5 @@ void frontend_backend_frame(AcwwShm *shm) { (void)shm; }
 
 void frontend_backend_close(void) {}
 
+void frontend_backend_turn(void) {}
 #endif

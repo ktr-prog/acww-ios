@@ -45,6 +45,7 @@ typedef struct {
         uint32_t keys;
     } p[TC_MAX_POINTERS];
     int stylus_x, stylus_y;  // the stylus's point on the bottom screen (0..255, 0..191)
+    unsigned stylus_presses;  // fingers that went down on the bottom screen (each a new press of the stylus)
     float stick_x, stick_y;  // the circle pad (TcLayout.stick): -1..1, y up; 0 inside the dead zone or untouched
 } TcState;
 
@@ -56,8 +57,11 @@ int tc_pointer(TcState *s, const TcLayout *l, int64_t id, int event, float x, fl
 // the DS buttons held (AcwwShm.keys bits: 0 A, 1 B, 2 Select, 3 Start, 4 Right, 5 Left, 6 Up, 7 Down, 8 R, 9 L,
 // 10 X, 11 Y)
 uint32_t tc_keys(const TcState *s);
-// the stylus: 1 and its point (0..255, 0..191) while a finger is on the bottom screen
+// the stylus: 1 and its point (0..255, 0..191) while a finger is on the bottom screen. The newest finger to go down
+// there is the stylus (typing with two thumbs: the next key's finger lands before the last one lifts); each such
+// finger counts a new press (tc_stylus_presses), also when no finger went up in between
 int tc_stylus(const TcState *s, int *x, int *y);
+unsigned tc_stylus_presses(const TcState *s);
 // the controls held now (bit per TC_ control: the D-pad's bit while any direction is held), for drawing them pressed
 uint32_t tc_held(const TcState *s);
 // the D-pad's directions held (the keys' bits 4-7)

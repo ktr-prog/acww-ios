@@ -156,6 +156,68 @@ static void pitfall_test(void) {
     s32 unit[2] = {pos[0] / 8192, pos[2] / 8192};
     fprintf(stderr, "pitfall: at %d,%d: %d\n", unit[0], unit[1], PlayerActor_RequestPitfallFall(o, unit, 6, -1));
 }
+// ACWW_EMOTION_TEST=<frame>:<first>[:<last>]: the local player does the emotions first..last (as the chat menu's
+// emotion keys do), one after the other: each logged (its action, body animations, play modes and effects), and
+// any that hasn't ended after 20 seconds, or whose effects are still alive after it ended, reported as broken
+extern s32 PlayerActor_RequestEmotion(u8 *p);
+extern int PlayerActor_HostEmotionState(void *o, s32 *action, u32 *anim, u32 *mode, s32 *effects);
+static const char *sEmotionTest;
+static void emotion_test(void) {
+    if (!sEmotionTest) sEmotionTest = getenv("ACWW_EMOTION_TEST") ? getenv("ACWW_EMOTION_TEST") : "";
+    static unsigned at, id, last;
+    static int n = -2;
+    static unsigned long long started;
+    static int seen, bad, anims[8], nAnims, modes[8], maxFx;
+    if (n == -2) {
+        n = sscanf(sEmotionTest, "%u:%u:%u", &at, &id, &last);
+        if (n == 2) last = id;
+    }
+    if (n < 2 || id == 0 || host_frame() < at || id > last) return;
+    void *o = PlayerActor_Get(4);
+    s32 action, fx[4];
+    u32 anim, mode;
+    if (!o || !PlayerActor_HostEmotionState(o, &action, &anim, &mode, fx)) return;
+    int alive = (fx[0] != -1) + (fx[1] != -1) + (fx[2] != -1) + (fx[3] != -1);
+    if (!started) {
+        if (action != 5 && action != 1 && action != 2 && action != 16) return;  // (idle first)
+        u8 b = (u8)id;
+        s32 r = PlayerActor_RequestEmotion(&b);
+        started = host_frame(), seen = 0, nAnims = 0, maxFx = 0;
+        if (!r) fprintf(stderr, "emotion %u: not taken (action %d)\n", id, action), started = 0, id++;
+        return;
+    }
+    if (action == 20) {
+        seen = 1;
+        if (alive > maxFx) maxFx = alive;
+        if (!nAnims || anims[nAnims - 1] != (int)anim) {
+            if (nAnims < 8) anims[nAnims] = (int)anim, modes[nAnims] = (int)mode, nAnims++;
+        }
+    }
+    unsigned long long t = host_frame() - started;
+    if ((seen && action != 20) || t > 1200 || (!seen && t > 60)) {
+        char a[120] = "";
+        for (int i = 0; i < nAnims; i++) snprintf(a + strlen(a), sizeof a - strlen(a), " %d/%d", anims[i], modes[i]);
+        const char *why = !seen ? "never started" : t > 1200 ? "never ended" : alive ? "effects left alive" : "";
+        if (*why) bad++;
+        fprintf(stderr, "emotion %u: %llu frames, animations/modes%s, effects at most %d, then action %d%s%s\n", id, t, a,
+                maxFx, action, *why ? ": BROKEN, " : "", why);
+        started = 0, id++;
+        if (id > last) fprintf(stderr, "emotion: done, %d broken\n", bad);
+    }
+}
+// ACWW_LIE_TEST=<frame>: the local player lies down where it stands, as in a bed (the action PlayerActor_SetupLieInBed
+// starts), for a look at the pose (ACWW_SHOT)
+extern s32 PlayerActor_RequestLieInBed(void *o, u32 a, u32 b, u32 c);
+static void lie_test(void) {
+    static const char *spec;
+    static int done;
+    unsigned at;
+    if (!spec) spec = getenv("ACWW_LIE_TEST") ? getenv("ACWW_LIE_TEST") : "";
+    if (done || sscanf(spec, "%u", &at) != 1 || host_frame() < at) return;
+    done = 1;
+    void *o = PlayerActor_Get(4);
+    if (o) fprintf(stderr, "lie: %d (frame %llu)\n", PlayerActor_RequestLieInBed(o, 1, 6, ~0u), (unsigned long long)host_frame());
+}
 // ACWW_TEST_CA=<the modulus, 256 hex digits>: the "Nintendo CA" root the SSL client trusts gets that key (a test
 // server's chain, for the connection tests: tools/wfc_test_server.py)
 extern u8 data_ov065_0228c0b8[128];
@@ -302,6 +364,7 @@ static void net_heap_trace(void) {
 
 void host_test_post_task(void) {
     gHostGameFrames++;
+    frontend_backend_turn();
     net_heap_trace();
     heap_check("frame");
     if (getenv("ACWW_NET_FREE_LOG") && gNetHeap) {
@@ -313,6 +376,8 @@ void host_test_post_task(void) {
     }
     thread_list_check();
     pitfall_test();
+    emotion_test();
+    lie_test();
     test_ca();
     if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";
     static int step;

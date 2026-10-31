@@ -1338,7 +1338,7 @@ u32 MsgTag::readArgBytes8Strings2(u8 *a1, u8 *a2, u8 *a3, u8 *s0, u8 *s1, u8 *s2
     char *p = args + argLen + 1;
     u32 total = 1;
     for (u32 i = 0; i < 2; i++) {
-        MsgString *t = *(MsgString **)((u8 *)L.arr + i * 4);
+        MsgString *t = L.arr[i];  // (by element: the DS stepped 4 bytes, a pointer's size there)
         t->setLine((u8 *)p);
         u32 n = t->length + 1;
         total += n;

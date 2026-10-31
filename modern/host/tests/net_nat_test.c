@@ -20,6 +20,24 @@ uint64_t host_plat_time_ns(void) {
     clock_gettime(CLOCK_MONOTONIC, &t);
     return (uint64_t)t.tv_sec * 1000000000u + (uint64_t)t.tv_nsec;
 }
+// (plat_posix.c's, for net_nat.c's address lookup thread)
+#include <pthread.h>
+struct ThreadStart { void (*fn)(void *); void *arg; };
+static void *thread_main(void *p) {
+    struct ThreadStart s = *(struct ThreadStart *)p;
+    free(p);
+    s.fn(s.arg);
+    return 0;
+}
+int host_plat_thread_start(void (*fn)(void *), void *arg) {
+    struct ThreadStart *s = malloc(sizeof *s);
+    pthread_t t;
+    if (!s) return 0;
+    s->fn = fn, s->arg = arg;
+    if (pthread_create(&t, 0, thread_main, s) != 0) { free(s); return 0; }
+    pthread_detach(t);
+    return 1;
+}
 
 static void put16(u8 *p, u32 v) { p[0] = (u8)(v >> 8), p[1] = (u8)v; }
 static void put32(u8 *p, u32 v) { put16(p, v >> 16), put16(p + 2, v); }
