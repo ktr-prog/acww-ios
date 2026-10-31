@@ -7696,3 +7696,10 @@ extern "C" int PlayerActor_HostEmotionState(void *obj, s32 *action, u32 *anim, u
     return 1;
 }
 #endif
+
+#ifdef HOST64
+// (modern/host/frontend.c's ACWW_SHOWOFF_TEST: the inventory's "show off" of a fish - Act76, kind 1)
+extern "C" int PlayerActor_HostShowOff(void *obj, u32 kind, u32 item) {
+    return obj ? ((PlayerActor *)obj)->requestAct76((u8)kind, (u8)item, 0, 6, -1) : 0;
+}
+#endif

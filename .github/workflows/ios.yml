@@ -1,5 +1,5 @@
 # The iOS app: an unsigned .ipa for sideloading (docs/ios.md). Runs on every push, on pull requests and by hand
-# (Actions > iOS > Run workflow). The .ipa is in the run's artifacts as ACWW-iOS (a zip holding ACWW.ipa).
+# (Actions > iOS > Run workflow). The .ipa is in the run's artifacts as iWW-iOS (a zip holding iWW.ipa).
 # No game data is used or needed here: the player adds their own copy of the game on the device.
 name: iOS
 
@@ -102,14 +102,14 @@ jobs:
 
       - name: Package
         run: |
-          python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa \
+          python3 tools/ios_package.py build/hostios_usa/acww build/ios/iWW.ipa \
             --version "1.0" --build "${{ github.run_number }}" --min-ios "$IOS_MIN" --commit "${GITHUB_SHA::7}" --sign-adhoc
-          unzip -l build/ios/ACWW.ipa
-          codesign --verify --verbose build/ios/Payload/ACWW.app
-          plutil -lint build/ios/Payload/ACWW.app/Info.plist
+          unzip -l build/ios/iWW.ipa
+          codesign --verify --verbose build/ios/Payload/iWW.app
+          plutil -lint build/ios/Payload/iWW.app/Info.plist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ACWW-iOS
-          path: build/ios/ACWW.ipa
+          name: iWW-iOS
+          path: build/ios/iWW.ipa
           if-no-files-found: error

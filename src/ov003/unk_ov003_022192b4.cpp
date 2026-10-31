@@ -4088,8 +4088,11 @@ void FieldObj_DrawUnits(O *o, BlockMap *g) {
 #ifdef HOST
         // (twice the DS's window: 18 units either side, 28 back - trees and the rest no longer pop in at its edge)
         enum { HALF_W = 18, BACK = 28, MAX_OBJS = 0x3f0 };
+// (the per-object depth window too, or the doubled grid is cut back to the DS one)
+enum { FAR_BACK = 0x1c200 * 2, FAR_FRONT = 0x8200 * 2, NEAR_BACK = 0x14a00 * 2, NEAR_FRONT = 0x6400 * 2 };
 #else
         enum { HALF_W = 9, BACK = 14, MAX_OBJS = 0xfc };
+enum { FAR_BACK = 0x1c200, FAR_FRONT = 0x8200, NEAR_BACK = 0x14a00, NEAR_FRONT = 0x6400 };
 #endif
         l.B.x = l.C.x + HALF_W * 0x2000;
         cnt = 0;
@@ -4123,8 +4126,8 @@ void FieldObj_DrawUnits(O *o, BlockMap *g) {
                       ((*cell) >= 0x57 && (*cell) <= 0x5b) || ((*cell) >= 0x66 && (*cell) <= 0x68) || (*cell) == 0x69 ||
                       ((*cell) >= 0x6a && (*cell) <= 0x6c) || (*cell) == 0x6d || ((*cell) >= 0xc8 && (*cell) <= 0xcf) ||
                       ((*cell) >= 0xe3 && (*cell) <= 0xe7) || ((*cell) >= 0xe8 && (*cell) <= 0xfb)) &&
-                     dist > -0x1c200 && dist < 0x8200) ||
-                    (dist > -0x14a00 && dist < 0x6400)) {
+                     dist > -FAR_BACK && dist < FAR_FRONT) ||
+                    (dist > -NEAR_BACK && dist < NEAR_FRONT)) {
                     if (((*cell) >= 0x26 && (*cell) <= 0x2a) || ((*cell) >= 0x5d && (*cell) <= 0x61) || ((*cell) >= 0x2f && (*cell) <= 0x56) ||
                         ((*cell) >= 0x57 && (*cell) <= 0x5b) || ((*cell) >= 0x66 && (*cell) <= 0x68) || (*cell) == 0x69 ||
                         ((*cell) >= 0x6a && (*cell) <= 0x6c) || (*cell) == 0x6d || ((*cell) >= 0xc8 && (*cell) <= 0xcf)) {

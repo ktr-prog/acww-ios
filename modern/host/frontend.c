@@ -218,6 +218,88 @@ static void lie_test(void) {
     void *o = PlayerActor_Get(4);
     if (o) fprintf(stderr, "lie: %d (frame %llu)\n", PlayerActor_RequestLieInBed(o, 1, 6, ~0u), (unsigned long long)host_frame());
 }
+// ACWW_FISH_TEST=<frame>: the local player gets a fishing rod and fishes where it stands (facing water) until it
+// lands one, pressing A at the bite and through the messages after; its actions are logged, and one held for 30
+// seconds is reported as stuck
+extern s32 PlayerActor_RequestChangeHeldItem(u16 *p);
+extern int PlayerActor_HostBobberFishState(void *o);
+extern int PlayerActor_HostStartFishing(void *o);
+static u32 sFishKeys;
+static void fish_test(void) {
+    static const char *spec;
+    static unsigned at;
+    static int stage, lastAction = -1, casts;
+    static unsigned long long since;
+    if (!spec) spec = getenv("ACWW_FISH_TEST") ? getenv("ACWW_FISH_TEST") : "";
+    sFishKeys = 0;
+    if (sscanf(spec, "%u", &at) != 1 || host_frame() < at || stage == 3) return;
+    void *o = PlayerActor_Get(4);
+    s32 action, fx[4];
+    u32 anim, mode;
+    if (!o || !PlayerActor_HostEmotionState(o, &action, &anim, &mode, fx)) return;
+    unsigned long long now = host_frame();
+    if (action != lastAction) {
+        fprintf(stderr, "fish: action %#x anim %u (frame %llu)\n", action, anim, now);
+        lastAction = action, since = now;
+    } else if (now - since > 1800 && stage == 2) {
+        fprintf(stderr, "fish: STUCK in action %#x anim %u mode %u since frame %llu\n", action, anim, mode, since);
+        stage = 3;
+        return;
+    }
+    if (stage == 0) {
+        u16 rod = 0x1374;
+        fprintf(stderr, "fish: rod: %d\n", PlayerActor_RequestChangeHeldItem(&rod));
+        stage = 1, since = now;
+        return;
+    }
+    int idle = action == 5 || action == 1 || action == 2 || action == 16;
+    if (stage == 1 && idle && now - since > 60) {
+        if (casts++ > 40) { fprintf(stderr, "fish: nothing caught\n"); stage = 3; return; }
+        fprintf(stderr, "fish: cast %d: %d\n", casts, PlayerActor_HostStartFishing(o));
+        since = now;
+        return;
+    }
+    if (action == 0x4f) {  // (waiting: A when a fish bites)
+        int f = PlayerActor_HostBobberFishState(o);
+        if (f >= 0 && (f & 0xff) == 6) sFishKeys = 1;
+    }
+    if (action >= 0x50 && action <= 0x55) stage = 2;
+    if (stage == 2 && (action == 0x54 || action == 0x55) && now % 40 < 4) sFishKeys = 1;  // (the messages)
+    if (stage == 2 && idle && now - since > 120) { fprintf(stderr, "fish: done, back to action %#x\n", action); stage = 3; }
+}
+// ACWW_SHOWOFF_TEST=<frame>[:<kind>:<item>]: the local player shows off an item as from the inventory (Act76; kind 1,
+// a fish: item 0 the first), A through the messages; actions logged, one held for 30 seconds reported as stuck
+extern int PlayerActor_HostShowOff(void *o, u32 kind, u32 item);
+static void showoff_test(void) {
+    static const char *spec;
+    static unsigned at, kind = 1, item = 0;
+    static int stage, lastAction = -1;
+    static unsigned long long since;
+    if (!spec) spec = getenv("ACWW_SHOWOFF_TEST") ? getenv("ACWW_SHOWOFF_TEST") : "";
+    if (sscanf(spec, "%u:%u:%u", &at, &kind, &item) < 1 || host_frame() < at || stage == 2) return;
+    void *o = PlayerActor_Get(4);
+    s32 action, fx[4];
+    u32 anim, mode;
+    if (!o || !PlayerActor_HostEmotionState(o, &action, &anim, &mode, fx)) return;
+    unsigned long long now = host_frame();
+    static int held;
+    if (!held && getenv("ACWW_SHOWOFF_HOLD")) {  // (the item in hand first, as from the inventory)
+        u16 it = (u16)strtoul(getenv("ACWW_SHOWOFF_HOLD"), 0, 16);
+        fprintf(stderr, "showoff: hold %04x: %d\n", it, PlayerActor_RequestChangeHeldItem(&it));
+        held = 1, since = now;
+        return;
+    }
+    if (stage == 0) {
+        if (now - since < 90) return;
+        fprintf(stderr, "showoff: %d\n", PlayerActor_HostShowOff(o, kind, item));
+        stage = 1, since = now;
+        return;
+    }
+    if (action != lastAction) fprintf(stderr, "showoff: action %#x anim %u mode %u (frame %llu)\n", action, anim, mode, now), lastAction = action, since = now;
+    else if (now - since > 1800) { fprintf(stderr, "showoff: STUCK in action %#x anim %u mode %u\n", action, anim, mode); stage = 2; return; }
+    if (now % 40 < 4) sFishKeys |= 1;  // (A through the messages)
+    if ((action == 5 || action == 1 || action == 2) && now - since > 300) { fprintf(stderr, "showoff: done\n"); stage = 2; }
+}
 // ACWW_LIGHTS_TEST=<frame>:<item>: that building's lights (BuildingLights) on at that frame, by day too - the gate's
 // come on when it opens
 extern int Building_HostSetLit(u32 item);
@@ -390,6 +472,8 @@ void host_test_post_task(void) {
     emotion_test();
     lie_test();
     lights_test();
+    fish_test();
+    showoff_test();
     test_ca();
     if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";
     static int step;
@@ -462,7 +546,7 @@ void host_test_post_task(void) {
     }
 }
 
-// a press that arrived at this screen refresh (a new touch, a button newly down): the game's main loop starts its next
+// a press that arrived at this screen refresh (a touch going down or up, a button newly down): the game's main loop starts its next
 // turn now (Main_VBlankCallback) - each press read at once. Taken once.
 static int sInputWantsTurn;
 static u32 sLastTouchDown, sLastKeys;
@@ -487,13 +571,15 @@ void frontend_frame(void) {
         frontend_backend_frame(sShm);
         if (sShm->quit) host_quit();
         u32 k = sShm->keys;
-        if (sShm->touch_down && !sLastTouchDown) sInputWantsTurn = 1;
+        // (a touch going down or up: the release between two queued taps also has to be read before the next tap can
+        // be shown - both start a turn at once, 2 screen refreshes a tap however fast the typing)
+        if (!sShm->touch_down != !sLastTouchDown) sInputWantsTurn = 1;
         sLastTouchDown = sShm->touch_down;
         keyinput = (u16)(~k & 0x3ff);
         xy = (u16)(0x2000 | (~k & 0x0c00));
     }
     town_dump();
-    u32 sk = scripted_keys() | goto_keys();
+    u32 sk = scripted_keys() | goto_keys() | sFishKeys;
     keyinput &= (u16)~(sk & 0x3ff);
     xy &= (u16)~(sk & 0x0c00);
     {   // (a button newly down: the window's or a test script's)

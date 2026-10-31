@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Package the iOS build (tools/configure_host.py --os ios) as an app and an unsigned .ipa for sideloading.
 
-    python3 tools/ios_package.py build/hostios_usa/acww build/ios/ACWW.ipa [--version 1.0] [--build 1] [--sign-adhoc]
+    python3 tools/ios_package.py build/hostios_usa/acww build/ios/iWW.ipa [--version 1.0] [--build 1] [--sign-adhoc]
 
-Writes <out dir>/Payload/ACWW.app (the program, Info.plist, the icons, PkgInfo) and zips it as the .ipa. The app is
+Writes <out dir>/Payload/iWW.app (the program, Info.plist, the icons, PkgInfo) and zips it as the .ipa. The app is
 not signed with a developer certificate: the sideloading tool (AltStore, SideStore, Sideloadly, ...) signs it with the
 installing Apple ID. --sign-adhoc gives it an ad-hoc signature first (codesign, on a Mac), which those tools replace.
 Only the Python standard library is used (the icons are drawn here, see draw_icon). See docs/ios.md.
@@ -22,8 +22,8 @@ import zipfile
 import zlib
 from pathlib import Path
 
-APP_NAME = "ACWW"         # (the bundle's name: ACWW.app)
-DISPLAY_NAME = "AC:WW"    # (on the home screen and in the Files app)
+APP_NAME = "iWW"          # (the bundle's name: iWW.app)
+DISPLAY_NAME = "iWW"      # (on the home screen and in the Files app)
 EXECUTABLE = "acww"
 BUNDLE_ID = "io.github.acww-native.acww"
 MIN_IOS = "12.0"  # (--min-ios: the build's deployment target)
@@ -69,7 +69,7 @@ def info_plist(version: str, build: str, commit: str = "", min_ios: str = MIN_IO
         "UIStatusBarHidden": True,
         "UISupportedInterfaceOrientations": orient,
         "UISupportedInterfaceOrientations~ipad": orient[:1] + ["UIInterfaceOrientationPortraitUpsideDown"] + orient[1:],
-        # the Documents folder in the Files app (On My iPhone > ACWW): the game goes there, the save is written there
+        # the Documents folder in the Files app (On My iPhone > iWW): the game goes there, the save is written there
         "UIFileSharingEnabled": True,
         "LSSupportsOpeningDocumentsInPlace": True,
         # (DS-to-DS play looks for other copies on the local network)

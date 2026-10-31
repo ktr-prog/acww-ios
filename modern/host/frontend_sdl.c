@@ -193,7 +193,7 @@ AcwwShm *frontend_backend_open(const char *argv0) {
     // SDL's SIGINT/SIGTERM handlers would replace the runtime's (debug_posix.c); the face buttons by position
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
-    SDL_SetHint(SDL_HINT_APP_NAME, "Animal Crossing: Wild World");
+    SDL_SetHint(SDL_HINT_APP_NAME, "iWW");
 #if HOST_IOS
     // every orientation (the layout follows); the home indicator hidden after a few seconds without a touch near it;
     // the screen kept on (a controller's buttons don't count as touches); no accelerometer as a joystick (it would
@@ -225,7 +225,7 @@ AcwwShm *frontend_backend_open(const char *argv0) {
 #if !HOST_IOS
     sFeSp = host_coro_prepare(stack, FE_STACK, fe_main, 0);
 #endif
-    sWin = SDL_CreateWindow("Animal Crossing: Wild World (native)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    sWin = SDL_CreateWindow("iWW", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                             256 * sScale, 384 * sScale, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI
 #if HOST_IOS
                             | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS

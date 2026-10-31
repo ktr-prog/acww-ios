@@ -117,7 +117,7 @@ static void open_log(NSString *docs) {
     char when[64];
     strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", localtime(&now));
     NSDictionary *info = [NSBundle mainBundle].infoDictionary;
-    fprintf(stderr, "ios: ACWW %s (build %s), %s, iOS %s, %s\n",
+    fprintf(stderr, "ios: iWW %s (build %s), %s, iOS %s, %s\n",
             [info[@"CFBundleShortVersionString"] UTF8String] ?: "?", [info[@"CFBundleVersion"] UTF8String] ?: "?",
             model, [UIDevice currentDevice].systemVersion.UTF8String, when);
     // (the build, on the settings screen and at start-up: frontend_ui.c)

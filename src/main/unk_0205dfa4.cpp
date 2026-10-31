@@ -333,6 +333,12 @@ extern "C" s32 HeldItemModels_LoadTexAnim(HeldItemModelBank *self, u32 idx, u32 
 }
 
 extern "C" void HeldItemModels_PlayAnim(HeldItemModelBank *self, u32 idx, u32 x, u32 y, u8 z) {
+#ifdef HOST
+    // (an item without animations - HeldItem_GetAnimId 0x2b: a fish, a bug... - has no animation buffer; showing it off
+    // asks it to play one anyway. The DS read the "file" at address 0, its own memory there, and went on; here that is
+    // a crash. Nothing to play)
+    if (HeldItemModels_GetAnimBuffer(&sHeldItemModelBank, idx) == NULL) return;
+#endif
     HeldItemModels_LoadAnim(&sHeldItemModelBank, idx, x);
     u8 *a = func_021065dc((u8 *)HeldItemModels_GetAnimBuffer(&sHeldItemModelBank, idx));
     u8 *b = func_021065f8(a, 0);

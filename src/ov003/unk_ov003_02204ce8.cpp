@@ -11827,3 +11827,18 @@ HOST_OVERLAY_VARS(unk_ov003_02204ce8) {
     HOST_OVERLAY_VAR(data_ov003_02230ac0),
     HOST_OVERLAY_VARS_END
 };
+
+#ifdef HOST64
+#include "field/FishShadow.h"
+// (modern/host/frontend.c's ACWW_FISH_TEST: the fish at the player's bobber, its AI mode and bite state; -1: none)
+extern "C" int PlayerActor_HostBobberFishState(void *obj) {
+    PlayerActor *o = (PlayerActor *)obj;
+    FishShadow *f = o ? (FishShadow *)o->heldItemModel.bobber.getFish() : NULL;
+    if (f == NULL) return -1;
+    return f->aiMode << 8 | f->biteState;
+}
+extern "C" int PlayerActor_HostStartFishing(void *obj) {
+    VecFx32 z = {0, 0, 0};
+    return PlayerActor_FieldStartToolAction((PlayerActor *)obj, 3, &z);
+}
+#endif

@@ -1587,7 +1587,13 @@ BOOL BuildingActor::isOffscreen() {
             dx = -dx;
         }
         s32 dz = position.z - g->z;
+#ifdef HOST
+        // (every building - the houses, the shops - has its own view window besides the actor cull; doubled with the
+        // rest of the draw distance, or the buildings still pop in and out at the DS's edge)
+        if (dx > getViewRangeX() * 2 || dz > getViewRangeFront() * 2 || dz < -getViewRangeBack() * 2) {
+#else
         if (dx > getViewRangeX() || dz > getViewRangeFront() || dz < -getViewRangeBack()) {
+#endif
             return TRUE;
         }
         return FALSE;
