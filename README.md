@@ -5,6 +5,7 @@ Features:
 - Improved drawing distance
 - Local play - With other copies on the same Wi-Fi network
 - Online play - Nintendo Wi-Fi Connection through [Wiimmfi](https://wiimmfi.de/)
+- Various bug fixes
   
 Toggleables:
 
