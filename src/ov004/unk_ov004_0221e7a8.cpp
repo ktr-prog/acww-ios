@@ -550,7 +550,9 @@ extern "C" s32 PlayerActor_LocalRequestBedApproach(const s32 *a, const s32 *b, c
         if (k <= (o)->getEffectivePriority()) {
             return 0;
         }
-        u32 f = Math_AngleToSide(*c - d) == 1 ? 1 : 0;
+        // (the difference as an angle, s16, as the DS's code takes it - lsls/asrs #16 before the call: unwrapped, a
+        // difference past +-0x8000 gave the other side of the bed, and the player lay down upside down)
+        u32 f = Math_AngleToSide((s16)(*c - d)) == 1 ? 1 : 0;
         return PlayerActor_RequestBedApproach(o, *a, *b, *c, f, k, -1);
     }
     return 0;

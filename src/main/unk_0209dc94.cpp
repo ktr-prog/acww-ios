@@ -1,4 +1,10 @@
 #include "types.h"
+#ifdef HOST64
+extern "C" int host_never_resetti(void);  // (modern/host/features.c: the settings screen's switch)
+#define HOST_NEVER_RESETTI() host_never_resetti()
+#else
+#define HOST_NEVER_RESETTI() 0
+#endif
 #include "save/SaveData.h"
 #include "game/ReddShop.h"
 #include "game/Unk_020aec00.h"
@@ -301,7 +307,9 @@ void SaveData::setupContinue() {
     if (Scene_GetCurrent() == 6) {
         if (VillagerStates_GetBirthdayVisitor() == -1) {
             if (a->testFlag(0x23) == 0) {
-                if (a->testFlag(2) != 0) {
+                // (the host's setting "Never get Resetti": the last session's end without saving forgiven - no reset
+                // counted, no visit)
+                if (a->testFlag(2) != 0 && !HOST_NEVER_RESETTI()) {
                     ((PlayerSpNpcRecord *)a->getSpNpcRecord())->addResetCount();
                     TownSessionState_GetResettiFlag(TownSessionState_Get())->set(1);
                 }

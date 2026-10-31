@@ -13,6 +13,8 @@ enum {
     FEAT_FPS,         // the game's own frame rate (its main loop's turns a second) over the top screen's corner
     FEAT_CPU3D,       // the 3D drawn by the CPU (gpu3d_raster.c, the DS's resolution) instead of the GPU (gpu3d_wgpu.c):
                       // read at start-up (the next launch)
+    FEAT_NO_RESETTI,  // Resetti never comes: starting after a session ended without saving counts no reset
+                      // (unk_0209dc94.cpp; the Action Replay code 221cd774 00000000's effect)
     FEAT_COUNT
 };
 

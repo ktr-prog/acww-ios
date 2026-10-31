@@ -195,15 +195,12 @@ AcwwShm *frontend_backend_open(const char *argv0) {
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
     SDL_SetHint(SDL_HINT_APP_NAME, "Animal Crossing: Wild World");
 #if HOST_IOS
-    // every orientation (the layout follows); the home indicator dimmed and the system's edge gestures deferred to
-    // the game ("2": SDL's view controller answers preferredScreenEdgesDeferringSystemGestures with every edge - with
-    // "1" it answered none, and iOS held each touch near an edge back while it decided whether it was a swipe: the
-    // bottom screen sits at the iPad's bottom edge, and taps on the keyboard and text boxes came late or not at all);
+    // every orientation (the layout follows); the home indicator hidden after a few seconds without a touch near it;
     // the screen kept on (a controller's buttons don't count as touches); no accelerometer as a joystick (it would
     // count as a controller); controllers through Apple's GameController framework only (SDL's own HID drivers would
     // ask for Bluetooth access); fingers and the mouse kept apart (touch_controls.c takes both)
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown");
-    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "1");
     SDL_SetHint(SDL_HINT_IDLE_TIMER_DISABLED, "1");
     SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
@@ -430,6 +427,11 @@ static unsigned sRawPresses;  // (the touch controls' count of presses: a finger
 static unsigned sPressId, sCurId;  // (the finger's press; the one shown)
 static int sCurDown, sCurX, sCurY;
 static unsigned long long sCurUntil, sUpAt;  // (gHostGameFrames: the shown press may go once past this; the last release)
+// (screen refreshes: when the shown press began, the last release. A game whose turns don't count - loading, some
+// screens without the main loop's task list - would hold a press, or the next, for good: after 6 refreshes, two of
+// the game's slowest turns, they go on by time)
+static unsigned long long sVblank, sCurVb, sUpVb;
+enum { TOUCH_VB_LIMIT = 6 };
 static int raw_touch(int *x, int *y, unsigned *presses) {
 #if HOST_IOS
     *presses = tc_stylus_presses(&sTouch);
@@ -461,16 +463,18 @@ static void touch_sample(void) {
 // at the end of a turn (else at a screen refresh)
 static void touch_show_next(int atTurnEnd) {
     unsigned long long now = gHostGameFrames;
-    if (sCurDown || !sTapCount || now <= sUpAt) return;
+    if (sCurDown || !sTapCount || (now <= sUpAt && sVblank - sUpVb < TOUCH_VB_LIMIT)) return;
     sCurX = sTapQ[sTapHead].x, sCurY = sTapQ[sTapHead].y;
     sTapHead = (sTapHead + 1) % 32, sTapCount--;
     sCurId = sPressId - (unsigned)sTapCount;  // (the press it came from)
-    sCurDown = 1, sCurUntil = atTurnEnd ? now : now + 1;
+    sCurDown = 1, sCurUntil = atTurnEnd ? now : now + 1, sCurVb = sVblank;
 }
 static int touch_live(void) {  // (the finger of the shown press still down, nothing after it)
     return sCurDown && sCurId == sPressId && sRawDown && !sTapCount;
 }
-static void touch_publish(void) {
+static void touch_publish(void) {  // (at each screen refresh)
+    sVblank++;
+    if (sCurDown && !touch_live() && sVblank - sCurVb >= TOUCH_VB_LIMIT) sCurDown = 0, sUpAt = gHostGameFrames, sUpVb = sVblank;
     touch_show_next(0);
     if (touch_live()) sCurX = sRawX, sCurY = sRawY;
     if (sCurDown) sShm->touch_x = sCurX, sShm->touch_y = sCurY;
@@ -481,7 +485,7 @@ static void touch_publish(void) {
 void frontend_backend_turn(void) {
     if (!sShm) return;
     unsigned long long now = gHostGameFrames;
-    if (sCurDown && !touch_live() && now > sCurUntil) sCurDown = 0, sUpAt = now;
+    if (sCurDown && !touch_live() && now > sCurUntil) sCurDown = 0, sUpAt = now, sUpVb = sVblank;
     touch_show_next(1);
     if (sCurDown) sShm->touch_x = sCurX, sShm->touch_y = sCurY;
     sShm->touch_down = sCurDown;

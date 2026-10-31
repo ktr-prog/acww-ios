@@ -11,6 +11,7 @@ static const struct {
     [FEAT_CIRCLE_PAD] = {"circle_pad", "CIRCLE PAD"},
     [FEAT_FPS] = {"fps", "FPS COUNTER"},
     [FEAT_CPU3D] = {"cpu3d", "CPU 3D (RESTART)"},
+    [FEAT_NO_RESETTI] = {"no_resetti", "NEVER GET RESETTI"},
 };
 static int sOn[FEAT_COUNT];
 static char sPath[1024];
@@ -61,6 +62,7 @@ int feature_on(int f) { return f >= 0 && f < FEAT_COUNT && sOn[f]; }
 
 static int env_off(const char *name) { return getenv(name) && atoi(getenv(name)) == 0; }
 int host_local_play_on(void) { return !env_off("ACWW_LOCAL_PLAY"); }
+int host_never_resetti(void) { return feature_on(FEAT_NO_RESETTI); }
 int host_wiimmfi_on(void) { return !env_off("ACWW_WIIMMFI"); }
 
 void feature_set(int f, int on) {
