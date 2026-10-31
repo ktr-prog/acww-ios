@@ -47,7 +47,7 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
         if (scw > sw) scw = sw, sch = scw * 1.5f;
         l->screens = rect(sx + (sw - scw) / 2, sy, scw, sch);
         float top = sy + sch, bottom = sy + sh, ch = bottom - top;
-        // the row: L, Save, Start, Select, Load, R
+        // the row: L, Save, Start, Load, R (no Select: the game has no use for it)
         float rh = clampf(ch * 0.17f, 30 * pt, 44 * pt);
         float rowY = top + m * 0.75f;
         float lrw = clampf(sw * 0.18f, 56 * pt, 120 * pt);
@@ -55,10 +55,10 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
         l->button[TC_R] = rect(sx + sw - m - lrw, rowY, lrw, rh);
         float gap = 8 * pt, ssh = rh * 0.8f;
         float room = l->button[TC_R].x - (l->button[TC_L].x + lrw) - 2 * gap;  // between L and R
-        float ssw = minf(clampf(sw * 0.15f, 48 * pt, 100 * pt), (room - 3 * gap) / 4);
-        float x0 = sx + sw / 2 - (4 * ssw + 3 * gap) / 2, sy0 = rowY + (rh - ssh) / 2;
-        static const int kRow[4] = {TC_SAVE, TC_START, TC_SELECT, TC_LOAD};
-        for (int i = 0; i < 4; i++) l->button[kRow[i]] = rect(x0 + i * (ssw + gap), sy0, ssw, ssh);
+        float ssw = minf(clampf(sw * 0.15f, 48 * pt, 100 * pt), (room - 2 * gap) / 3);
+        float x0 = sx + sw / 2 - (3 * ssw + 2 * gap) / 2, sy0 = rowY + (rh - ssh) / 2;
+        static const int kRow[3] = {TC_SAVE, TC_START, TC_LOAD};
+        for (int i = 0; i < 3; i++) l->button[kRow[i]] = rect(x0 + i * (ssw + gap), sy0, ssw, ssh);
         // the D-pad and the face buttons below the row
         float aTop = rowY + rh + m * 0.5f, aBottom = bottom - m * 0.5f, ah = aBottom - aTop;
         float k = minf(minf(ah, sw * 0.44f), 230 * pt);
@@ -92,7 +92,7 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
             float gap = 8 * pt, ssh = rh * 0.8f, ssw = minf(clampf(pw * 0.4f, 52 * pt, 110 * pt), (pw - gap) / 2);
             float cx = p.x + p.w / 2;
             TcRect shoulder = rect(cx - lrw / 2, p.y + m, lrw, rh);
-            // (two small buttons side by side at the bottom: Save and Start on the left, Select and Load on the right)
+            // (small buttons at the bottom: Save and Start side by side on the left, Load on the right)
             TcRect small = rect(cx - ssw - gap / 2, p.y + p.h - m - ssh, 2 * ssw + gap, ssh);
             TcRect smallA = rect(small.x, small.y, ssw, ssh), smallB = rect(small.x + ssw + gap, small.y, ssw, ssh);
             // (Menu: a small pill below L on the left; the D-pad and the face buttons below it, level with each other)
@@ -105,7 +105,7 @@ void tc_layout(TcLayout *l, int w, int h, float pt, const float safe[4], int con
                 l->button[TC_MENU] = menu;
                 l->button[TC_DPAD] = square_at(cx, cy, k * 0.92f);
             } else {
-                l->button[TC_R] = shoulder, l->button[TC_SELECT] = smallA, l->button[TC_LOAD] = smallB;
+                l->button[TC_R] = shoulder, l->button[TC_LOAD] = rect(cx - ssw / 2, small.y, ssw, ssh);
                 face_buttons(l, cx, cy, k);
             }
         }

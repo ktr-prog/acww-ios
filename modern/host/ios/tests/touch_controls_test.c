@@ -124,6 +124,10 @@ static void check_layout(const Device *d, int side, int controls, const char *di
         CHECK(sw >= 230, "%s %s: screens only %.0f pt wide", d->name, o, sw);
         for (int i = 0; i < TC_COUNT; i++) {
             TcRect a = l.button[i];
+            if (i == TC_SELECT) {  // (no Select button: the game has no use for it)
+                CHECK(a.w == 0 && a.h == 0, "%s %s: a SELECT button", d->name, o);
+                continue;
+            }
             CHECK(a.w > 0 && a.h > 0, "%s %s: %s has no size", d->name, o, kName[i]);
             CHECK(contains(sr, a, 0.5f), "%s %s: %s outside the safe area", d->name, o, kName[i]);
             CHECK(!overlap(a, l.screens), "%s %s: %s over the screens", d->name, o, kName[i]);
@@ -154,6 +158,7 @@ static void check_touch(void) {
     tc_reset(&s);
     static const uint32_t kBits[] = {1u << 0, 1u << 1, 1u << 10, 1u << 11, 1u << 9, 1u << 8, 1u << 3, 1u << 2, 0, 0, 0};
     for (int b = 0; b < TC_DPAD; b++) {
+        if (b == TC_SELECT) continue;  // (not there)
         tc_pointer(&s, &l, 7, TC_DOWN, cx(l.button[b]), cy(l.button[b]));
         CHECK(tc_keys(&s) == kBits[b], "button %s gives keys %#x", kName[b], tc_keys(&s));
         CHECK(tc_held(&s) == 1u << b, "button %s held %#x", kName[b], tc_held(&s));

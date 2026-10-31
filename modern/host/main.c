@@ -12,6 +12,7 @@
 #include "host_mem.h"
 #include "overlay.h"
 #include "plat.h"
+#include "host_features.h"
 #include "savestate.h"
 
 int gHostVerbose;
@@ -119,6 +120,12 @@ int main(int argc, char **argv) {
     memcpy(gHostSysWork.bootCheckInfo, rom + 0x0c, 4);
     *(volatile u16 *)gHostSysWork.wmBootBuf = 1;
     pxi7_init();
+#if HOST_IOS
+    {   // the settings screen's "CPU 3D" (host_features.h): the 3D engine is chosen once, here
+        if (!getenv("ACWW_RENDERER3D") && feature_in_file("acww-settings.txt", FEAT_CPU3D))
+            setenv("ACWW_RENDERER3D", "own", 1), fprintf(stderr, "render: the 3D on the CPU (the settings)\n");
+    }
+#endif
     render_init();
     host_debug_crash_handlers();  // (melonDS's JIT replaced the SIGSEGV handler)
     extern void frontend_init(const char *argv0);

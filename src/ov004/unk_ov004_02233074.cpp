@@ -351,8 +351,11 @@ extern "C" u16 sFtrMgrCycleCounter;
 extern "C" FurnitureManager *sFurnitureManager;
 
 
+// (a bed: its actor profile 0x37 - the u16 at the DS's offset 0xc, ProcBase::profile. It was read as FtrActor::kind,
+// the index into sFtrKindProfiles (0..0x2f, beds 10 and 42), never 0x37: in bed, rolling over and getting out were
+// never offered - the player lay there for good)
 static inline BOOL Unk_ov004_02234f30_Is37(FtrActor *m) {
-    if (m->kind == 0x37) {
+    if (m->profile == 0x37) {
         return TRUE;
     }
     return FALSE;
