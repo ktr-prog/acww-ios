@@ -240,6 +240,9 @@ BOOL PocketMenu::execTransition() {
     return TRUE;
 }
 
+#ifdef HOST64
+extern "C" int host_pocket_action(int state);
+#endif
 void PocketMenu::runMainState() {
     static Unk_ov096_0229aea8_Fn tbl[58] = {
         &PocketMenu::mainAct00,
@@ -300,6 +303,16 @@ void PocketMenu::runMainState() {
         &PocketMenu::mainAct37,
         &PocketMenu::mainAct38,
         &PocketMenu::mainAct39};
+#ifdef HOST64
+    {   // (modern/host/frontend.c's ACWW_POCKET_ACTION: a menu choice for the first pocket's item, as if picked)
+        int act = host_pocket_action(mainState);
+        if (act >= 0) {
+            actionTarget = 0, chosenAction = (u8)act;
+            runChosenAction();
+            return;
+        }
+    }
+#endif
     (this->*tbl[mainState])();
 }
 

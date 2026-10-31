@@ -10,7 +10,6 @@ static const struct {
 } kFeatures[FEAT_COUNT] = {
     [FEAT_CIRCLE_PAD] = {"circle_pad", "CIRCLE PAD"},
     [FEAT_FPS] = {"fps", "FPS COUNTER"},
-    [FEAT_CPU3D] = {"cpu3d", "CPU 3D (RESTART)"},
     [FEAT_NO_RESETTI] = {"no_resetti", "NEVER GET RESETTI"},
 };
 static int sOn[FEAT_COUNT];
@@ -44,18 +43,6 @@ void features_init(const char *path) {
         fclose(f);
     }
     for (int i = 0; i < FEAT_COUNT; i++) fprintf(stderr, "features: %s %s\n", kFeatures[i].key, sOn[i] ? "on" : "off");
-}
-
-int feature_in_file(const char *path, int f) {
-    FILE *fp = path && f >= 0 && f < FEAT_COUNT ? fopen(path, "r") : NULL;
-    int on = 0;
-    if (!fp) return 0;
-    char line[256];
-    size_t n = strlen(kFeatures[f].key);
-    while (fgets(line, sizeof line, fp))
-        if (!strncmp(line, kFeatures[f].key, n) && line[n] == '=') on = atoi(line + n + 1) != 0;
-    fclose(fp);
-    return on;
 }
 
 int feature_on(int f) { return f >= 0 && f < FEAT_COUNT && sOn[f]; }

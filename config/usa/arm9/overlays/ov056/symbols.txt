@@ -1,5 +1,0 @@
-DummyProcCD_Create kind:function(thumb,size=0x2c) addr:0x02258de0
-_ZN11DummyProcCDD1Ev kind:function(thumb,size=0x20) addr:0x02258e0c
-_ZN11DummyProcCDD0Ev kind:function(thumb,size=0x28) addr:0x02258e2c
-sDummyProcCDProfile kind:data(any) addr:0x02258e60 ambiguous
-data_ov056_02258e70 kind:data(any) addr:0x02258e70

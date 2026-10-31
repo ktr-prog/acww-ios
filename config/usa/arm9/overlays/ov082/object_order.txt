@@ -1,4 +1,0 @@
-# Units placed object by object, see tools/object_order.py and tools/pipeline/linking.md.
-
-# unk_ov082_022713c0.cpp: placed by object (replaces filler objects)
-src/ov082/unk_ov082_022713c0.cpp:

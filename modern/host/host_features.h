@@ -11,8 +11,6 @@ extern "C" {
 enum {
     FEAT_CIRCLE_PAD,  // analog walking: the touch D-pad becomes a circle pad, a controller's left stick is analog
     FEAT_FPS,         // the game's own frame rate (its main loop's turns a second) over the top screen's corner
-    FEAT_CPU3D,       // the 3D drawn by the CPU (gpu3d_raster.c, the DS's resolution) instead of the GPU (gpu3d_wgpu.c):
-                      // read at start-up (the next launch)
     FEAT_NO_RESETTI,  // Resetti never comes: starting after a session ended without saving counts no reset
                       // (unk_0209dc94.cpp; the Action Replay code 221cd774 00000000's effect)
     FEAT_COUNT
@@ -23,7 +21,6 @@ extern volatile unsigned long long gHostGameFrames;
 
 void features_init(const char *path);  // the file's settings (missing: all off)
 int feature_on(int f);
-int feature_in_file(const char *path, int f);  // (before features_init: a setting as the file has it)
 void feature_set(int f, int on);       // (saved at once)
 const char *feature_name(int f);       // capitals, for the settings screen
 // (not switches: both always there, chosen at the gate as on the DS)

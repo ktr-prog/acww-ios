@@ -1,6 +1,0 @@
-# Absolute symbols: numbers that the linker script defines as symbols (tools/lcf_symbols.py; tools/pipeline/linking.md,
-# "Absolute symbols"). The word that holds one has no relocation in relocs.txt. <name> abs:<value>
-SDK_SYS_STACKSIZE             abs:0x00002000  # system (launcher thread) stack size
-SDK_IRQ_STACKSIZE             abs:0x00001000  # IRQ stack size
-SDK_SECTION_ARENA_DTCM_START  abs:0x027e0460  # end of the DTCM bss = start of the DTCM arena
-SDK_SECTION_ARENA_EX_START    abs:0x02400000  # start of the extended main-RAM arena

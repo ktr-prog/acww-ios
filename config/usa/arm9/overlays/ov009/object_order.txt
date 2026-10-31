@@ -1,4 +1,0 @@
-# Units built from more than one object, see tools/object_order.py and tools/pipeline/linking.md.
-# The unit's thunks need mwcc 1.2/sp2 and its switch function vfunc_4c needs 1.2/base.
-src/ov009/unk_ov009_0225b880.cpp:
-    extra src/ov009/unk_ov009_0225b880_switch.cpp _ZN13BuildingActor18onInteractionEventEjh

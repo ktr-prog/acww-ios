@@ -7703,3 +7703,16 @@ extern "C" int PlayerActor_HostShowOff(void *obj, u32 kind, u32 item) {
     return obj ? ((PlayerActor *)obj)->requestAct76((u8)kind, (u8)item, 0, 6, -1) : 0;
 }
 #endif
+
+#ifdef HOST64
+#include "player/PlayerData.h"
+#include "player/PlayerInventory.h"
+extern "C" PlayerData *PlayerData_GetCurrent();
+// (modern/host/frontend.c's ACWW_POCKET: an item put in a pocket, for the pocket menu's tests)
+extern "C" int PlayerActor_HostSetPocket(int idx, u32 item) {
+    PlayerData *p = PlayerData_GetCurrent();
+    if (!p || idx < 0 || idx >= 15) return 0;
+    ((PlayerInventory *)p->getInventory())->pockets[idx] = (u16)item;
+    return 1;
+}
+#endif

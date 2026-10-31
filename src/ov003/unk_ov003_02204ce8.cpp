@@ -1971,7 +1971,9 @@ extern "C" s32 PlayerActor_IsLocalReleaseWaiting() {
     Obj *o = PlayerActor_Get(4);
     if (o) {
         if (o->action == 6) {
-            if (o->actionWorkRaw[0xd] == 1) {
+            // (the release's step: ReleaseCreatureWork::step - 0xd on the DS, after a 64-bit pointer here; as a fixed
+            // 0xd it was never 1, and the pocket menu's "Show it off!" waited for it for good)
+            if (((ns_02211818::ReleaseCreatureWork *)&o->actionWork)->step == 1) {
                 return TRUE;
             }
         }

@@ -270,13 +270,36 @@ static void fish_test(void) {
 // ACWW_SHOWOFF_TEST=<frame>[:<kind>:<item>]: the local player shows off an item as from the inventory (Act76; kind 1,
 // a fish: item 0 the first), A through the messages; actions logged, one held for 30 seconds reported as stuck
 extern int PlayerActor_HostShowOff(void *o, u32 kind, u32 item);
+extern int PlayerActor_HostSetPocket(int idx, u32 item);
+static void pocket_test(void) {  // ACWW_POCKET=<frame>:<item, hex>: that item in the first pocket at that frame
+    static const char *spec;
+    static int done;
+    unsigned at, item;
+    if (!spec) spec = getenv("ACWW_POCKET") ? getenv("ACWW_POCKET") : "";
+    if (done || sscanf(spec, "%u:%x", &at, &item) != 2 || host_frame() < at) return;
+    done = 1, fprintf(stderr, "pocket: %x: %d\n", item, PlayerActor_HostSetPocket(0, item));
+}
+// ACWW_POCKET_ACTION=<frame>:<action, hex>: the pocket menu, idle from that frame, runs that choice for the first
+// pocket's item (1a: "Show it off!"); its states logged (src/ov096/unk_02294c40.cpp, PocketMenu::runMainState)
+int host_pocket_action(int state) {
+    static const char *spec;
+    static int done, last = -1;
+    unsigned at, act;
+    if (!spec) spec = getenv("ACWW_POCKET_ACTION") ? getenv("ACWW_POCKET_ACTION") : "";
+    if (sscanf(spec, "%u:%x", &at, &act) != 2) return -1;
+    if (state != last) fprintf(stderr, "pocketmenu: state %#x (frame %llu)\n", state, (unsigned long long)host_frame()), last = state;
+    if (done || host_frame() < at || state != 0) return -1;
+    done = 1;
+    fprintf(stderr, "pocketmenu: action %#x\n", act);
+    return (int)act;
+}
 static void showoff_test(void) {
     static const char *spec;
     static unsigned at, kind = 1, item = 0;
     static int stage, lastAction = -1;
     static unsigned long long since;
     if (!spec) spec = getenv("ACWW_SHOWOFF_TEST") ? getenv("ACWW_SHOWOFF_TEST") : "";
-    if (sscanf(spec, "%u:%u:%u", &at, &kind, &item) < 1 || host_frame() < at || stage == 2) return;
+    if (sscanf(spec, "%u:%u:%x", &at, &kind, &item) < 1 || host_frame() < at || stage == 2) return;
     void *o = PlayerActor_Get(4);
     s32 action, fx[4];
     u32 anim, mode;
@@ -291,13 +314,21 @@ static void showoff_test(void) {
     }
     if (stage == 0) {
         if (now - since < 90) return;
-        fprintf(stderr, "showoff: %d\n", PlayerActor_HostShowOff(o, kind, item));
+        if (kind == 98) fprintf(stderr, "showoff: watching\n");  // (only the actions logged: the real menus drive it)
+        else if (kind == 99 || kind == 97) {
+            extern void Camera_PushView(void);
+            if (kind == 97) Camera_PushView();  // (as the pocket menu's "Show it off!" does: the camera close first)  // (the pockets' hold-up: the item dragged onto the player, Act 0x85)
+            extern s32 PlayerActor_RequestHoldUpItem(u16 *p);
+            u16 it = (u16)item;
+            fprintf(stderr, "showoff: hold up %04x: %d\n", it, PlayerActor_RequestHoldUpItem(&it));
+        } else
+            fprintf(stderr, "showoff: %d\n", PlayerActor_HostShowOff(o, kind, item));
         stage = 1, since = now;
         return;
     }
     if (action != lastAction) fprintf(stderr, "showoff: action %#x anim %u mode %u (frame %llu)\n", action, anim, mode, now), lastAction = action, since = now;
     else if (now - since > 1800) { fprintf(stderr, "showoff: STUCK in action %#x anim %u mode %u\n", action, anim, mode); stage = 2; return; }
-    if (now % 40 < 4) sFishKeys |= 1;  // (A through the messages)
+    if (kind != 98 && now % 40 < 4) sFishKeys |= 1;  // (A through the messages)
     if ((action == 5 || action == 1 || action == 2) && now - since > 300) { fprintf(stderr, "showoff: done\n"); stage = 2; }
 }
 // ACWW_LIGHTS_TEST=<frame>:<item>: that building's lights (BuildingLights) on at that frame, by day too - the gate's
@@ -474,6 +505,7 @@ void host_test_post_task(void) {
     lights_test();
     fish_test();
     showoff_test();
+    pocket_test();
     test_ca();
     if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";
     static int step;

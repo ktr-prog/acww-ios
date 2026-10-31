@@ -868,7 +868,10 @@ static void ios_show(const uint32_t *overlay, int changed) {
     SDL_RenderClear(sRen);
     TcRect sc = sLayout.screens;
     SDL_FRect dst = {sc.x, sc.y, sc.w, sc.h};
-    int k = (int)SDL_ceilf(sc.w / 256.0f - 0.01f);
+    // (the DS's pixels blown up k times with no blur, then smoothly *up* to the screens' size: k rounded down. Rounded
+    // up, the last step shrank the picture with a filter that reads only 2 of the 3 or more pixels under each one,
+    // dropping a column every so often - the thin lines seen in fine patterns such as the beach's sand)
+    int k = (int)SDL_floorf(sc.w / 256.0f + 0.01f);
     k = k < 1 ? 1 : k > 8 ? 8 : k;
     if (k != sSharpK) {
         if (sSharp) SDL_DestroyTexture(sSharp);

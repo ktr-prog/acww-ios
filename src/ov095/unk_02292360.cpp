@@ -1074,9 +1074,14 @@ s32 Keyboard_UpdatePressedKey(Keyboard *s)
 {
     if (s->pressTimer != 0) {
         s->pressTimer--;
+#ifndef HOST
+        // (on the DS a key locks the keyboard for the turn after it is let go: one letter per three turns at most, so
+        // fast typing falls behind; here the next touch types at once, as on a real keyboard - the key's highlight
+        // still goes as on the DS)
         if (s->pressTimer >= 4) {
             return 1;
         }
+#endif
         if (s->pressTimer == 0) {
             Keyboard_ClearHighlight(s);
         }
