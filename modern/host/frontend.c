@@ -462,6 +462,16 @@ void host_test_post_task(void) {
     }
 }
 
+// a press that arrived at this screen refresh (a new touch, a button newly down): the game's main loop starts its next
+// turn now (Main_VBlankCallback) - each press read at once. Taken once.
+static int sInputWantsTurn;
+static u32 sLastTouchDown, sLastKeys;
+int host_input_wants_turn(void) {
+    int r = sInputWantsTurn;
+    sInputWantsTurn = 0;
+    return r;
+}
+
 // at each VBlank: publish the frame, take the input
 void frontend_frame(void) {
     u16 keyinput = 0x3ff;  // KEYINPUT: released bits are 1
@@ -477,6 +487,8 @@ void frontend_frame(void) {
         frontend_backend_frame(sShm);
         if (sShm->quit) host_quit();
         u32 k = sShm->keys;
+        if (sShm->touch_down && !sLastTouchDown) sInputWantsTurn = 1;
+        sLastTouchDown = sShm->touch_down;
         keyinput = (u16)(~k & 0x3ff);
         xy = (u16)(0x2000 | (~k & 0x0c00));
     }
@@ -484,6 +496,11 @@ void frontend_frame(void) {
     u32 sk = scripted_keys() | goto_keys();
     keyinput &= (u16)~(sk & 0x3ff);
     xy &= (u16)~(sk & 0x0c00);
+    {   // (a button newly down: the window's or a test script's)
+        u32 held = (~keyinput & 0x3ff) | (u32)(~xy & 0x0c00);
+        if (held & ~sLastKeys) sInputWantsTurn = 1;
+        sLastKeys = held;
+    }
     *(u16 *)host_io(0x04000130) = keyinput;
     *(volatile u16 *)&gHostSysWork.buttonXY = xy;
 }

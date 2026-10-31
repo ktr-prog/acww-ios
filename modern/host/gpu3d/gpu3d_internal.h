@@ -14,7 +14,9 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-enum { MAX_VERTICES = 6144, MAX_POLYGONS = 2048 };
+// (four times the DS's polygon and vertex RAM: the game draws twice as far here - FieldObj_DrawUnits,
+// Actor::setCullParams - and the DS's limits would drop what lies beyond them)
+enum { MAX_VERTICES = 6144 * 4, MAX_POLYGONS = 2048 * 4 };
 
 typedef struct G3Vertex {
     s32 pos[4];       // clip coordinates x, y, z, w

@@ -4085,7 +4085,13 @@ void FieldObj_DrawUnits(O *o, BlockMap *g) {
         l.A = gCameraLookAt;
         FieldPos_SnapToUnitCenter(&l.C, &l.A);
         FieldPos_ToUnit(&l.x, &l.z, &l.C);
-        l.B.x = l.C.x + 0x12000;
+#ifdef HOST
+        // (twice the DS's window: 18 units either side, 28 back - trees and the rest no longer pop in at its edge)
+        enum { HALF_W = 18, BACK = 28, MAX_OBJS = 0x3f0 };
+#else
+        enum { HALF_W = 9, BACK = 14, MAX_OBJS = 0xfc };
+#endif
+        l.B.x = l.C.x + HALF_W * 0x2000;
         cnt = 0;
         l.B.y = 0;
         l.B.z = l.C.z + 0x8000;
@@ -4100,7 +4106,7 @@ void FieldObj_DrawUnits(O *o, BlockMap *g) {
         }
         l.m = data_021f47e0;
         dist = l.D.z - l.C.z;
-        i = 9;
+        i = HALF_W;
         goto itest;
     iloop:
         cell = BlockMap_GetItemPtrAtPos(g, &l.D, 0);
@@ -4192,17 +4198,17 @@ void FieldObj_DrawUnits(O *o, BlockMap *g) {
                 break;
             }
         }
-        if (cnt >= 0xfc) goto end;
+        if (cnt >= MAX_OBJS) goto end;
     step:
         l.mw[9] -= 0x2000;
         l.D.x -= 0x2000;
         i--;
     itest:
-        if (i >= -9) goto iloop;
+        if (i >= -HALF_W) goto iloop;
         l.B.z -= 0x2000;
         j--;
     jtest:
-        if (j >= -14) goto jloop;
+        if (j >= -BACK) goto jloop;
     }
 end:;
 }

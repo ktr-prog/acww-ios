@@ -171,7 +171,13 @@ void *Actor::spawn(u32 profile, u32 param, void *pos, void *angle, void *parent)
 void Actor::setCullParams(s32 a, s32 b, s32 c) {
     cullHeight = a;
     cullRadius = b;
+#ifdef HOST
+    // (drawn twice as far as on the DS: buildings and the other actors no longer pop in and out at the DS's distance;
+    // FieldObj_DrawUnits does the same for trees and the rest of the ground's objects)
+    cullDepth = c * 2;
+#else
     cullDepth = c;
+#endif
 }
 
 void Actor::applyVelocity(ActorCollider *v) {

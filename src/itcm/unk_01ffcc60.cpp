@@ -40,9 +40,18 @@ extern "C" void MenuScreen_WipeHBlank(void) {
 }
 
 // vblank work
+#ifdef HOST
+// (modern/host/frontend.c: a press - a tap, a button - arrived at this screen refresh; already published and sampled
+// when this handler runs. The game's turn then starts now instead of at the end of its 2 or 3 refreshes: it reads
+// the press at once - quicker than on a DS, where a press waited for the next turn)
+extern "C" int host_input_wants_turn(void);
+#define HOST_INPUT_WANTS_TURN() host_input_wants_turn()
+#else
+#define HOST_INPUT_WANTS_TURN() 0
+#endif
 extern "C" void Main_VBlankCallback(void) {
     sVBlankCount++;
-    if (sVBlankCount >= gVBlanksPerFrame) {
+    if (sVBlankCount >= gVBlanksPerFrame || (gMainWaitingFrame != 0 && HOST_INPUT_WANTS_TURN())) {
         if (gMainWaitingFrame != 0) {
             OS_WakeupThread(&gFrameWaitQueue);
             sVBlankCount = 0;
