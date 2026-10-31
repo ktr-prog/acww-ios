@@ -1582,7 +1582,7 @@ void SpNpcCopperTalk::onChoiceMainMenu(s32 p) {
                     if (Net_HasWifiUserId(s)) {
                         id = 0x29;
                         s64 t = Net_GetOwnFriendKey(s);
-                        ((SpNpcCopperTalk *)(this))->setFriendCodeArgs((s32)t);
+                        ((SpNpcCopperTalk *)(this))->setFriendCodeArgs(t);  // (all 64 bits, as the DS passes them: r0:r1 to r1:r2 - a friend code has 12 digits)
                     } else {
                         id = 0x23;
                     }
@@ -2329,7 +2329,7 @@ s32 SpNpcCopperTalk::getWifiLoginResultMsg() {
         NetOverlay_LoadWifi();
         r = 0x26;
         s64 t = Net_GetOwnFriendKey(PlayerWifiData_GetDwcUserData(PlayerData_GetCurrent()->getWifiUserData()));
-        ((SpNpcCopperTalk *)(this))->setFriendCodeArgs((s32)t);
+        ((SpNpcCopperTalk *)(this))->setFriendCodeArgs(t);  // (all 64 bits, as the DS passes them: r0:r1 to r1:r2 - a friend code has 12 digits)
         NetOverlay_Restore();
         break;
     }
