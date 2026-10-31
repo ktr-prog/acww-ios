@@ -195,12 +195,15 @@ AcwwShm *frontend_backend_open(const char *argv0) {
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
     SDL_SetHint(SDL_HINT_APP_NAME, "Animal Crossing: Wild World");
 #if HOST_IOS
-    // every orientation (the layout follows); the home indicator hidden after a few seconds without a touch near it;
+    // every orientation (the layout follows); the home indicator dimmed and the system's edge gestures deferred to
+    // the game ("2": SDL's view controller answers preferredScreenEdgesDeferringSystemGestures with every edge - with
+    // "1" it answered none, and iOS held each touch near an edge back while it decided whether it was a swipe: the
+    // bottom screen sits at the iPad's bottom edge, and taps on the keyboard and text boxes came late or not at all);
     // the screen kept on (a controller's buttons don't count as touches); no accelerometer as a joystick (it would
     // count as a controller); controllers through Apple's GameController framework only (SDL's own HID drivers would
     // ask for Bluetooth access); fingers and the mouse kept apart (touch_controls.c takes both)
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown");
-    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "1");
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
     SDL_SetHint(SDL_HINT_IDLE_TIMER_DISABLED, "1");
     SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");

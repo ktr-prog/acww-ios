@@ -1569,3 +1569,14 @@ s32 sHourHandCos = 0x1000;
 StrBSizeData *sStrBSizeTable[0x22];
 u8 sTaxiArriving;
 s32 sHourHandSin;
+
+#ifdef HOST64
+// (modern/host/frontend.c's ACWW_LIGHTS_TEST: a building's lights switched on at once, whatever the hour)
+extern "C" void *Shared_BuildingList_FindByItem(unsigned int a0);
+extern "C" int Building_HostSetLit(u32 item) {
+    BuildingActor *b = (BuildingActor *)Shared_BuildingList_FindByItem(item);
+    if (b == NULL) return 0;
+    b->lights.setLit(TRUE, 0, 0);
+    return 1;
+}
+#endif

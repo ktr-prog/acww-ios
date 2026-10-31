@@ -218,6 +218,17 @@ static void lie_test(void) {
     void *o = PlayerActor_Get(4);
     if (o) fprintf(stderr, "lie: %d (frame %llu)\n", PlayerActor_RequestLieInBed(o, 1, 6, ~0u), (unsigned long long)host_frame());
 }
+// ACWW_LIGHTS_TEST=<frame>:<item>: that building's lights (BuildingLights) on at that frame, by day too - the gate's
+// come on when it opens
+extern int Building_HostSetLit(u32 item);
+static void lights_test(void) {
+    static const char *spec;
+    unsigned at, item;
+    if (!spec) spec = getenv("ACWW_LIGHTS_TEST") ? getenv("ACWW_LIGHTS_TEST") : "";
+    if (sscanf(spec, "%u:%x", &at, &item) != 2 || host_frame() < at) return;
+    static int done;
+    if (!done) done = 1, fprintf(stderr, "lights: %x: %d\n", item, Building_HostSetLit(item));
+}
 // ACWW_TEST_CA=<the modulus, 256 hex digits>: the "Nintendo CA" root the SSL client trusts gets that key (a test
 // server's chain, for the connection tests: tools/wfc_test_server.py)
 extern u8 data_ov065_0228c0b8[128];
@@ -378,6 +389,7 @@ void host_test_post_task(void) {
     pitfall_test();
     emotion_test();
     lie_test();
+    lights_test();
     test_ca();
     if (!sWfcTest) sWfcTest = getenv("ACWW_WFC_TEST") ? getenv("ACWW_WFC_TEST") : "";
     static int step;
