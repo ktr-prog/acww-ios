@@ -11,7 +11,7 @@ Toggleable:
 - Circle Pad - Credit/Source: [https://gbatemp.net/threads/circle-pad-patches-for-super-mario-64-ds-and-other-games-in-twilightmenu-with-twpatcher-and-rtcom.623267/)](https://gbatemp.net/threads/circle-pad-patches-for-super-mario-64-ds-and-other-games-in-twilightmenu-with-twpatcher-and-rtcom.623267/)
 - Resetti 
 
-Supported version (user nees to provide .nds file in Files app):
+Supported version (user needs to provide .nds file in Files app):
 
 | Version        | Game code | SHA-1                                      |
 | -------------- | --------- | ------------------------------------------ |
